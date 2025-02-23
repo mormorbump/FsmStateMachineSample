@@ -29,41 +29,55 @@ func (s *StateServer) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		s.OnStateChanged(currentPhase.CurrentState())
 	}
 
-	go s.recvWsMessage(conn)()
+	go func() { _ = s.recvWsMessage(conn) }()
 }
 
-func (s *StateServer) recvWsMessage(conn *websocket.Conn) func() {
+func (s *StateServer) recvWsMessage(conn *websocket.Conn) error {
 	log := logger.DefaultLogger()
-	return func() {
-		defer func() {
-			s.mu.Lock()
-			delete(s.clients, conn)
-			s.mu.Unlock()
-			conn.Close()
-		}()
+	defer func() {
+		log.Debug("recvWsMessage: Closing connection")
+		s.mu.Lock()
+		delete(s.clients, conn)
+		s.mu.Unlock()
+		err := conn.Close()
+		if err != nil {
+			log.Error("Error closing connection: %v", zap.Error(err))
+			return
+		}
+	}()
 
-		for {
-			var msg struct {
-				Event string `json:"event"`
-			}
-			if err := conn.ReadJSON(&msg); err != nil {
-				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-					log.Error("Error reading message: %v", zap.Error(err))
-				}
-				return
-			}
+	for {
+		var msg struct {
+			Event string `json:"event"`
+		}
+		if err := conn.ReadJSON(&msg); err != nil {
+			log.Error("Error reading message: %v", zap.Error(err))
+			return err
+		}
 
-			// イベントを処理
-			if err := s.stateFacade.Start(context.Background()); err != nil {
-				s.OnError(err)
-			} else {
-				currentPhaseState := s.stateFacade.GetCurrentPhase()
-				if currentPhaseState != nil {
-					s.OnStateChanged(currentPhaseState.CurrentState())
-				}
-			}
+		log.Debug("WS: Received message: %v", zap.String("event", msg.Event))
+		err := s.handleActionRequest(msg.Event)
+		if err != nil {
+			log.Error("Error reading message: %v", zap.Error(err))
+			return err
 		}
 	}
+}
+
+func (s *StateServer) handleActionRequest(action string) error {
+	log := logger.DefaultLogger()
+	var err error
+	switch action {
+	case "start", "activate":
+		err = s.stateFacade.Start(context.Background())
+	case "stop":
+		err = s.stateFacade.Reset(context.Background())
+	case "reset", "finish":
+		err = s.stateFacade.Reset(context.Background())
+	default:
+		log.Error("Invalid action: %v", zap.String("action", action))
+	}
+	return err
 }
 
 // handleAutoTransition 自動遷移の制御を処理
@@ -72,18 +86,8 @@ func (s *StateServer) handleAutoTransition(w http.ResponseWriter, r *http.Reques
 	action := r.URL.Query().Get("action")
 	log.Debug("Received auto-transition control request: ", zap.String("action", action))
 
-	var err error
-	switch action {
-	case "start":
-		err = s.stateFacade.Start(r.Context())
-	case "stop":
-		err = s.stateFacade.Reset(r.Context())
-	case "reset":
-		err = s.stateFacade.Reset(r.Context())
-	default:
-		http.Error(w, "Invalid action", http.StatusBadRequest)
-		return
-	}
+	log.Debug("HTTP: Received message: %v", zap.String("event", action))
+	err := s.handleActionRequest(action)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

@@ -1,102 +1,108 @@
-# 状態遷移の制御改善計画
+# WebSocket通信のブロッキング問題解決
 
-## 1. 現状の問題
+## 問題の分析
 
-### 1.1 無限ループの発生
+### 現状の問題点
+1. WebSocketメッセージ処理が同期的
+2. handleActionRequestがメインゴルーチンをブロック
+3. Start/Reset処理が同期的に実行
+
+### 影響
+- 他のメッセージ処理が遅延
+- UIのレスポンス性が低下
+- システム全体のパフォーマンスが低下
+
+## 解決策
+
+### 1. メッセージ処理の非同期化
 ```go
-// 現状のコード
-func (pc *PhaseController) OnStateChanged(state string) {
-    _ = pc.Start(context.Background()) // 新しい状態遷移を開始
-    pc.NotifyStateChanged(state)       // 新しいOnStateChangedを呼び出す
+// WebSocketメッセージ受信処理
+func (s *StateServer) recvWsMessage(conn *websocket.Conn) error {
+    for {
+        var msg struct {
+            Event string `json:"event"`
+        }
+        if err := conn.ReadJSON(&msg); err != nil {
+            return err
+        }
+
+        // 非同期でアクションを処理
+        go s.processAction(msg.Event)
+    }
+}
+
+// アクション処理を別ゴルーチンで実行
+func (s *StateServer) processAction(event string) {
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    if err := s.handleActionRequest(ctx, event); err != nil {
+        s.OnError(err)
+    }
 }
 ```
 
-- 状態変更を受け取るたびにStart()を呼び出す
-- Start()が新しい状態遷移を引き起こす
-- その状態遷移が再びOnStateChangedを呼び出す
-- これが無限ループとなる
-
-### 1.2 問題の影響
-- サーバーログが大量に出力される
-- システムリソースの無駄な消費
-- 状態遷移の制御が不安定
-
-## 2. 修正方針
-
-### 2.1 状態遷移の制御改善
+### 2. コンテキスト制御
 ```go
-// 修正案1: 状態に基づく制御
-func (pc *PhaseController) OnStateChanged(state string) {
-    // 特定の状態の場合のみ次のフェーズに進む
-    if state == "next" {
-        _ = pc.Start(context.Background())
+func (s *StateServer) handleActionRequest(ctx context.Context, action string) error {
+    switch action {
+    case "start", "activate":
+        return s.stateFacade.Start(ctx)
+    case "stop", "reset", "finish":
+        return s.stateFacade.Reset(ctx)
+    default:
+        return fmt.Errorf("invalid action: %s", action)
     }
-    pc.NotifyStateChanged(state)
-}
-
-// 修正案2: フラグによる制御
-type PhaseController struct {
-    // 既存のフィールド
-    isTransitioning bool
-    mu              sync.RWMutex
-}
-
-func (pc *PhaseController) OnStateChanged(state string) {
-    pc.mu.Lock()
-    if pc.isTransitioning {
-        pc.mu.Unlock()
-        return
-    }
-    pc.isTransitioning = true
-    pc.mu.Unlock()
-
-    defer func() {
-        pc.mu.Lock()
-        pc.isTransitioning = false
-        pc.mu.Unlock()
-    }()
-
-    _ = pc.Start(context.Background())
-    pc.NotifyStateChanged(state)
 }
 ```
 
-### 2.2 期待される効果
-1. 状態遷移の制御
-   - 適切なタイミングでのみ遷移を実行
-   - 不要な遷移の防止
-   - リソース使用の最適化
+## 期待される効果
 
-2. ログ出力の改善
-   - 必要な情報のみを出力
-   - デバッグのしやすさ向上
-   - システム状態の把握が容易に
+### 1. パフォーマンス改善
+- WebSocketメッセージ処理のブロッキング解消
+- UIのレスポンス性向上
+- 並行処理の効率化
 
-## 3. 実装手順
+### 2. 安定性向上
+- タイムアウト制御による信頼性向上
+- エラーハンドリングの改善
+- デッドロックリスクの軽減
 
-1. PhaseControllerの修正
-   - isTransitioningフラグの追加
-   - OnStateChanged関数の改善
-   - ロック制御の追加
+### 3. 保守性向上
+- 処理の分離による可読性向上
+- エラー追跡の容易化
+- コードの構造化
 
-2. ログ出力の最適化
-   - 重要なイベントのみをログ出力
-   - デバッグレベルの調整
-   - コンテキスト情報の追加
+## 実装手順
 
-## 4. 検証項目
+1. 非同期処理の導入
+   - recvWsMessageの修正
+   - processActionの実装
+   - goroutineの適切な管理
 
-1. 基本機能
-   - 状態遷移の正常動作
-   - フェーズの順序通りの進行
-   - エラー時の適切な処理
+2. コンテキスト制御の実装
+   - タイムアウト設定の追加
+   - エラーハンドリングの改善
+   - リソース管理の最適化
 
-2. パフォーマンス
-   - ログ出力量の確認
+3. テストと検証
+   - 並行処理のテスト
+   - エラーケースの確認
+   - パフォーマンス測定
+
+## 注意点
+
+1. goroutineの管理
+   - 適切なエラーハンドリング
+   - リソースリークの防止
+   - 終了処理の確実な実行
+
+2. エラー処理
+   - エラーの適切な伝播
+   - ユーザーへの通知
+   - ログ出力の充実
+
+3. パフォーマンス
+   - goroutineの適切な数の管理
    - メモリ使用量の監視
-   - CPU使用率の確認
-
-3. エッジケース
-   - 高速な状態変更
-   - 同時実行時の動作
-   - エラー発生時の挙動
+   - 負荷テストの実施

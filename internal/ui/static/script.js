@@ -1,4 +1,4 @@
-// WebSocket接続の管理
+// 状態管理クラス
 class StateManager {
     constructor() {
         this.connect();
@@ -12,36 +12,49 @@ class StateManager {
         this.ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
 
         this.ws.onopen = () => {
+            console.log('WebSocket: 接続確立');
             this.showStatus('接続しました', 'success');
         };
 
         this.ws.onclose = () => {
+            console.log('WebSocket: 接続切断');
             this.showStatus('接続が切断されました。再接続します...', 'error');
             setTimeout(() => this.connect(), 3000);
         };
 
         this.ws.onerror = (error) => {
+            console.error('WebSocket エラー:', error);
             this.showStatus('エラーが発生しました: ' + error.message, 'error');
         };
 
         this.ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            this.handleStateUpdate(data);
+            console.log('WebSocket受信データ:', event.data);
+            try {
+                const data = JSON.parse(event.data);
+                console.log('パース済みデータ:', data);
+                this.handleStateUpdate(data);
+            } catch (error) {
+                console.error('データパースエラー:', error);
+                this.showStatus('データ処理エラー: ' + error.message, 'error');
+            }
         };
     }
 
     setupEventListeners() {
         // 状態遷移ボタンのイベントリスナー
         document.getElementById('activate-btn').addEventListener('click', () => {
-            this.sendEvent('activate');
+            console.log('イベント送信: activate');
+            this.controlAutoTransition('activate');
         });
 
         document.getElementById('next-btn').addEventListener('click', () => {
-            this.sendEvent('next');
+            console.log('イベント送信: next');
+            this.controlAutoTransition('next');
         });
 
         document.getElementById('finish-btn').addEventListener('click', () => {
-            this.sendEvent('finish');
+            console.log('イベント送信: finish');
+            this.controlAutoTransition('finish');
         });
     }
 
@@ -61,37 +74,50 @@ class StateManager {
 
         // 自動遷移ボタンのイベントリスナー
         document.getElementById('start-auto').addEventListener('click', () => {
+            console.log('自動遷移開始リクエスト');
             this.controlAutoTransition('start');
         });
 
         document.getElementById('stop-auto').addEventListener('click', () => {
+            console.log('自動遷移停止リクエスト');
             this.controlAutoTransition('stop');
         });
 
         document.getElementById('reset-btn').addEventListener('click', () => {
-            this.sendEvent('reset');
+            console.log('リセットリクエスト');
+            this.controlAutoTransition('reset');
         });
     }
 
     async controlAutoTransition(action) {
+        console.log(`自動遷移API呼び出し: ${action}`);
         try {
             const response = await fetch(`/api/auto-transition?action=${action}`, {
                 method: 'POST'
             });
 
+            console.log('APIレスポンス:', {
+                status: response.status,
+                statusText: response.statusText
+            });
+
             if (response.ok) {
+                console.log(`自動遷移${action}成功`);
                 this.showStatus(`自動遷移${action === 'start' ? '開始' : '停止'}`, 'success');
                 this.updateAutoTransitionStatus(action === 'start');
             } else {
                 const error = await response.text();
+                console.error('自動遷移APIエラー:', error);
                 this.showStatus(`自動遷移制御エラー: ${error}`, 'error');
             }
         } catch (error) {
+            console.error('自動遷移API例外:', error);
             this.showStatus(`自動遷移制御エラー: ${error.message}`, 'error');
         }
     }
 
     updateAutoTransitionStatus(isRunning) {
+        console.log('自動遷移状態更新:', isRunning);
         const startBtn = document.getElementById('start-auto');
         const stopBtn = document.getElementById('stop-auto');
         const resetBtn = document.getElementById('reset-btn');
@@ -108,29 +134,45 @@ class StateManager {
     }
 
     sendEvent(event) {
+        console.log('WebSocketイベント送信:', event);
         if (this.ws.readyState === WebSocket.OPEN) {
-            this.ws.send(JSON.stringify({ event }));
+            const message = JSON.stringify({ event });
+            console.log('送信メッセージ:', message);
+            this.ws.send(message);
         } else {
+            console.error('WebSocket接続エラー - 現在の状態:', this.ws.readyState);
             this.showStatus('サーバーに接続できません', 'error');
         }
     }
 
     handleStateUpdate(data) {
+        console.log('状態更新データ受信:', data);
         if (data.type === 'error') {
+            console.error('状態更新エラー:', data.error);
             this.showStatus(data.error, 'error');
             return;
         }
 
-        if (data.type === 'state_change') {
-            this.updateState(data);
-            this.updateTransitionInfo(data);
-            if (data.info && data.info.message) {
-                this.updateStateMessage(data.info.message);
-            }
+        console.log('新しい状態:', {
+            state: data.state,
+            phase: data.phase,
+            nextTransition: data.next_transition
+        });
+
+        this.updateState(data);
+        this.updateTransitionInfo(data);
+        if (data.message) {
+            console.log('状態メッセージ:', data.message);
+            this.updateStateMessage(data.message);
         }
     }
 
     updateState(data) {
+        console.log('状態更新処理:', {
+            currentState: this.currentState,
+            newState: data.state
+        });
+
         // 現在の状態表示を更新
         const currentStateElement = document.getElementById('current-state');
         currentStateElement.textContent = data.state;
@@ -144,27 +186,35 @@ class StateManager {
 
         // 完了状態の場合、自動遷移を停止
         if (data.state === 'finish') {
+            console.log('完了状態検出 - 自動遷移停止');
             this.updateAutoTransitionStatus(false);
         }
     }
 
     updateStateMessage(message) {
+        console.log('メッセージ更新:', message);
         const messageElement = document.getElementById('state-message');
         messageElement.textContent = message;
         messageElement.className = 'state-message ' + this.currentState;
     }
 
     updateTransitionInfo(data) {
+        console.log('遷移情報更新:', {
+            currentState: this.currentState,
+            nextTransition: data.nextTransition
+        });
+
         const nextTransitionElement = document.getElementById('next-transition');
-        if (data.nextTransition && this.currentState !== 'finish') {
+        if (this.currentState === 'finish') {
+            nextTransitionElement.textContent = '';
+        } else {
             const nextTransition = new Date(data.nextTransition);
             this.startTransitionCountdown(nextTransition);
-        } else {
-            nextTransitionElement.textContent = '';
         }
     }
 
     startTransitionCountdown(nextTransition) {
+        console.log('カウントダウン開始:', nextTransition);
         const nextTransitionElement = document.getElementById('next-transition');
         
         // 既存のカウントダウンをクリア
@@ -189,6 +239,7 @@ class StateManager {
     }
 
     updateStateDiagram(newState) {
+        console.log('状態図更新:', newState);
         // 全ての状態をリセット
         document.querySelectorAll('.state').forEach(state => {
             state.classList.remove('active');
@@ -210,6 +261,7 @@ class StateManager {
     }
 
     highlightPossibleTransitions(state) {
+        console.log('可能な遷移をハイライト:', state);
         const transitionMap = {
             'ready': ['activate'],
             'active': ['next'],
@@ -217,6 +269,7 @@ class StateManager {
         };
 
         const possibleTransitions = transitionMap[state] || [];
+        console.log('可能な遷移:', possibleTransitions);
         possibleTransitions.forEach(event => {
             const transitionElement = document.querySelector(`.transition[data-event="${event}"]`);
             if (transitionElement) {
@@ -226,6 +279,7 @@ class StateManager {
     }
 
     updateButtons(state) {
+        console.log('ボタン状態更新:', state);
         // ボタンの有効/無効を状態に応じて更新
         const buttons = {
             'activate-btn': state === 'ready',
@@ -240,6 +294,7 @@ class StateManager {
     }
 
     showStatus(message, type) {
+        console.log('ステータス表示:', { message, type });
         const statusElement = document.getElementById('status-message');
         statusElement.textContent = message;
         statusElement.className = 'status-message ' + type;
@@ -248,5 +303,6 @@ class StateManager {
 
 // アプリケーションの初期化
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('アプリケーション初期化開始');
     new StateManager();
 });

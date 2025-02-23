@@ -1,6 +1,8 @@
 package core
 
 import (
+	"go.uber.org/zap"
+	logger "state_sample/internal/lib"
 	"sync"
 )
 
@@ -40,6 +42,8 @@ func (s *StateSubjectImpl) RemoveObserver(observer StateObserver) {
 }
 
 func (s *StateSubjectImpl) NotifyStateChanged(state string) {
+	log := logger.DefaultLogger()
+	log.Debug("StateSubjectImpl.NotifyStateChanged", zap.String("state", state))
 	s.mu.RLock()
 	observers := make([]StateObserver, len(s.observers))
 	copy(observers, s.observers)

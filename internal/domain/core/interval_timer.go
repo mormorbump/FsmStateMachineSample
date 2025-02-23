@@ -70,18 +70,6 @@ func (t *IntervalTimer) Stop() {
 	t.stopChan = make(chan struct{})
 }
 
-func (t *IntervalTimer) IsRunning() bool {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return t.isRunning
-}
-
-func (t *IntervalTimer) GetNextTrigger() time.Time {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return t.nextTrigger
-}
-
 func (t *IntervalTimer) updateNextTrigger() {
 	t.nextTrigger = time.Now().Add(t.interval)
 	t.log.Debug("Next event scheduled at", zap.Time("next_trigger", t.nextTrigger))
@@ -90,10 +78,6 @@ func (t *IntervalTimer) updateNextTrigger() {
 func (t *IntervalTimer) UpdateInterval(newInterval time.Duration) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-
-	if t.interval == newInterval {
-		return
-	}
 
 	t.interval = newInterval
 	t.log.Debug("Updating interval to", zap.Duration("new_interval", newInterval))
@@ -106,12 +90,6 @@ func (t *IntervalTimer) UpdateInterval(newInterval time.Duration) {
 		t.ticker = time.NewTicker(t.interval)
 		t.updateNextTrigger()
 	}
-}
-
-func (t *IntervalTimer) GetInterval() time.Duration {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return t.interval
 }
 
 // run 時間管理のメインループを実行
@@ -147,6 +125,7 @@ func (t *IntervalTimer) RemoveObserver(observer TimeObserver) {
 }
 
 func (t *IntervalTimer) NotifyTimeTicker() {
+	t.log.Debug("IntervalTimer.NotifyTimeTicker")
 	t.mu.RLock()
 	observers := make([]TimeObserver, len(t.observers))
 	copy(observers, t.observers)

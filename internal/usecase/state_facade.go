@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"sort"
 	"state_sample/internal/domain/entity"
 	"time"
 )
@@ -21,14 +20,10 @@ type stateFacadeImpl struct {
 
 func NewStateFacade() StateFacade {
 	phases := entity.Phases{
-		entity.NewPhase("BUILD_PHASE", 3*time.Second, 1),
-		entity.NewPhase("COMBAT_PHASE", 1*time.Second, 2),
-		entity.NewPhase("RESOLUTION_PHASE", 5*time.Second, 3),
+		entity.NewPhase("PHASE1", 1*time.Second, 1),
+		entity.NewPhase("PHASE2", 2*time.Second, 2),
+		entity.NewPhase("PHASE3", 3*time.Second, 3),
 	}
-	// Order順にソート
-	sort.Slice(phases, func(i, j int) bool {
-		return phases[i].Order < phases[j].Order
-	})
 
 	controller := NewPhaseController(phases)
 

@@ -44,25 +44,29 @@ func NewPhase(phaseType string, interval time.Duration, order int) *Phase {
 			defer p.mu.Unlock()
 			p.isActive = true
 			p.timer.UpdateInterval(p.Interval)
-			p.timer.Start() // タイマーを開始
-			p.log.Debug("Phase transition", zap.String("from", e.Src), zap.String("to", core.StateActive))
+			p.timer.Start()
 		},
 		"enter_" + core.StateNext: func(ctx context.Context, e *fsm.Event) {
 			p.mu.Lock()
 			defer p.mu.Unlock()
-			p.timer.Stop() // タイマーを停止
-			p.log.Debug("Phase transition", zap.String("from", e.Src), zap.String("to", core.StateNext))
+			p.timer.Stop()
 		},
 		"enter_" + core.StateFinish: func(ctx context.Context, e *fsm.Event) {
 			p.mu.Lock()
 			defer p.mu.Unlock()
 			p.isActive = false
-			p.timer.Stop() // タイマーを停止
-			p.log.Debug("Phase transition", zap.String("from", e.Src), zap.String("to", core.StateFinish))
+			p.timer.Stop()
+		},
+		"after_" + core.EventReset: func(ctx context.Context, e *fsm.Event) {
+			p.mu.Lock()
+			defer p.mu.Unlock()
+			p.isActive = false
+			p.timer.Stop()
 		},
 		"after_event": func(ctx context.Context, e *fsm.Event) {
+			p.log.Debug("Phase transition", zap.String("from", e.Src), zap.String("to", e.Dst))
 			p.log.Debug("Phase state changed", zap.String("state", p.CurrentState()))
-			if p.isActive {
+			if e.Dst != core.StateFinish {
 				p.NotifyStateChanged(p.CurrentState())
 			}
 		},
@@ -86,49 +90,30 @@ func NewPhase(phaseType string, interval time.Duration, order int) *Phase {
 }
 
 func (p *Phase) OnTimeTicked() {
+	p.log.Debug("Phase.OnTimeTicked")
 	_ = p.Next(context.Background())
 }
 
-// CurrentState は現在の状態を返します
 func (p *Phase) CurrentState() string {
 	return p.fsm.Current()
 }
 
-// GetInterval はインターバルを返します
-func (p *Phase) GetInterval() time.Duration {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.Interval
-}
-
-// GetOrder は順序を返します
-func (p *Phase) GetOrder() int {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.Order
-}
-
-// GetStateInfo は現在の状態の情報を返します
 func (p *Phase) GetStateInfo() *core.GameStateInfo {
 	return core.GetGameStateInfo(p.CurrentState())
 }
 
-// Activate はフェーズをアクティブ状態に遷移させます
 func (p *Phase) Activate(ctx context.Context) error {
 	return p.fsm.Event(ctx, core.EventActivate)
 }
 
-// Next は次の状態に遷移させます
 func (p *Phase) Next(ctx context.Context) error {
 	return p.fsm.Event(ctx, core.EventNext)
 }
 
-// Finish はフェーズを完了状態に遷移させます
 func (p *Phase) Finish(ctx context.Context) error {
 	return p.fsm.Event(ctx, core.EventFinish)
 }
 
-// Reset はフェーズを初期状態にリセットします
 func (p *Phase) Reset(ctx context.Context) error {
 	return p.fsm.Event(ctx, core.EventReset)
 }
@@ -140,6 +125,15 @@ func (p Phases) Current() *Phase {
 	for _, phase := range p {
 		if phase.isActive {
 			return phase
+		}
+	}
+	return nil
+}
+
+func (p Phases) ResetAll(ctx context.Context) error {
+	for _, phase := range p {
+		if err := phase.Reset(ctx); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -165,10 +159,9 @@ func (p Phases) ProcessOrder(ctx context.Context) (*Phase, error) {
 	}
 
 	// 次のフェーズを探して活性化
-	for i, phase := range p {
-		if phase == current {
-			nextIndex := (i + 1) % len(p)
-			nextPhase := p[nextIndex]
+	for _, phase := range p {
+		if current.Order+1 == phase.Order {
+			nextPhase := phase
 			log.Debug("Phase action", zap.String("type", nextPhase.Type), zap.String("action", "Activating next phase"))
 			return nextPhase, nextPhase.Activate(ctx)
 		}
