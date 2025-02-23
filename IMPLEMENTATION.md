@@ -1,135 +1,102 @@
-# UI層の更新設計
+# 状態遷移の制御改善計画
 
-## 1. StateServerの更新
+## 1. 現状の問題
 
-### 1.1 依存関係の変更
+### 1.1 無限ループの発生
 ```go
-type StateServer struct {
-    stateFacade fsm.StateFacade
-    clients     map[*websocket.Conn]bool
-    upgrader    websocket.Upgrader
-    mu          sync.RWMutex
+// 現状のコード
+func (pc *PhaseController) OnStateChanged(state string) {
+    _ = pc.Start(context.Background()) // 新しい状態遷移を開始
+    pc.NotifyStateChanged(state)       // 新しいOnStateChangedを呼び出す
 }
 ```
 
-### 1.2 コンストラクタの更新
+- 状態変更を受け取るたびにStart()を呼び出す
+- Start()が新しい状態遷移を引き起こす
+- その状態遷移が再びOnStateChangedを呼び出す
+- これが無限ループとなる
+
+### 1.2 問題の影響
+- サーバーログが大量に出力される
+- システムリソースの無駄な消費
+- 状態遷移の制御が不安定
+
+## 2. 修正方針
+
+### 2.1 状態遷移の制御改善
 ```go
-func NewStateServer(facade fsm.StateFacade) *StateServer {
-    server := &StateServer{
-        stateFacade: facade,
-        clients:     make(map[*websocket.Conn]bool),
-        upgrader: websocket.Upgrader{
-            CheckOrigin: func(r *http.Request) bool {
-                return true
-            },
-        },
+// 修正案1: 状態に基づく制御
+func (pc *PhaseController) OnStateChanged(state string) {
+    // 特定の状態の場合のみ次のフェーズに進む
+    if state == "next" {
+        _ = pc.Start(context.Background())
     }
-
-    // PhaseControllerの監視を設定
-    facade.GetController().AddObserver(server)
-
-    return server
+    pc.NotifyStateChanged(state)
 }
-```
 
-### 1.3 StateObserverインターフェースの実装
-```go
-// OnStateChanged は状態変更時に呼び出されます
-func (s *StateServer) OnStateChanged(state string) {
-    currentPhase := s.stateFacade.GetCurrentPhase()
-    if currentPhase == nil {
+// 修正案2: フラグによる制御
+type PhaseController struct {
+    // 既存のフィールド
+    isTransitioning bool
+    mu              sync.RWMutex
+}
+
+func (pc *PhaseController) OnStateChanged(state string) {
+    pc.mu.Lock()
+    if pc.isTransitioning {
+        pc.mu.Unlock()
         return
     }
+    pc.isTransitioning = true
+    pc.mu.Unlock()
 
-    stateInfo := currentPhase.GetStateInfo()
-    update := struct {
-        Type    string           `json:"type"`
-        State   string           `json:"state"`
-        Info    *fsm.GameStateInfo `json:"info,omitempty"`
-        Phase   string           `json:"phase"`
-        Message string           `json:"message,omitempty"`
-    }{
-        Type:    "state_change",
-        State:   state,
-        Info:    stateInfo,
-        Phase:   currentPhase.Type,
-        Message: stateInfo.Message,
-    }
-    s.broadcastUpdate(update)
+    defer func() {
+        pc.mu.Lock()
+        pc.isTransitioning = false
+        pc.mu.Unlock()
+    }()
+
+    _ = pc.Start(context.Background())
+    pc.NotifyStateChanged(state)
 }
 ```
 
-## 2. ハンドラーの更新
+### 2.2 期待される効果
+1. 状態遷移の制御
+   - 適切なタイミングでのみ遷移を実行
+   - 不要な遷移の防止
+   - リソース使用の最適化
 
-### 2.1 WebSocket接続ハンドラー
-```go
-func (s *StateServer) handleWebSocket(w http.ResponseWriter, r *http.Request) {
-    conn, err := s.upgrader.Upgrade(w, r, nil)
-    if err != nil {
-        log.Printf("WebSocket upgrade failed: %v", err)
-        return
-    }
+2. ログ出力の改善
+   - 必要な情報のみを出力
+   - デバッグのしやすさ向上
+   - システム状態の把握が容易に
 
-    s.mu.Lock()
-    s.clients[conn] = true
-    s.mu.Unlock()
+## 3. 実装手順
 
-    // 初期状態を送信
-    currentPhase := s.stateFacade.GetCurrentPhase()
-    if currentPhase != nil {
-        s.OnStateChanged(currentPhase.CurrentState())
-    }
-}
-```
+1. PhaseControllerの修正
+   - isTransitioningフラグの追加
+   - OnStateChanged関数の改善
+   - ロック制御の追加
 
-### 2.2 制御ハンドラー
-```go
-func (s *StateServer) handleStart(w http.ResponseWriter, r *http.Request) {
-    if err := s.stateFacade.Start(r.Context()); err != nil {
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
-    }
-    w.WriteHeader(http.StatusOK)
-}
+2. ログ出力の最適化
+   - 重要なイベントのみをログ出力
+   - デバッグレベルの調整
+   - コンテキスト情報の追加
 
-func (s *StateServer) handleReset(w http.ResponseWriter, r *http.Request) {
-    if err := s.stateFacade.Reset(r.Context()); err != nil {
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
-    }
-    w.WriteHeader(http.StatusOK)
-}
-```
+## 4. 検証項目
 
-## 3. メリット
+1. 基本機能
+   - 状態遷移の正常動作
+   - フェーズの順序通りの進行
+   - エラー時の適切な処理
 
-1. FSM層との整合性
-   - 新しいインターフェースの活用
-   - 適切な状態情報の利用
-   - 一貫した監視メカニズム
+2. パフォーマンス
+   - ログ出力量の確認
+   - メモリ使用量の監視
+   - CPU使用率の確認
 
-2. シンプルな実装
-   - 明確な依存関係
-   - 直接的な状態アクセス
-   - 効率的な通知
-
-3. 拡張性
-   - 新しい状態情報の追加が容易
-   - クライアント通知の柔軟性
-   - エラーハンドリングの改善
-
-## 4. 実装手順
-
-1. 依存関係の更新
-   - import文の修正
-   - インターフェースの更新
-
-2. StateServerの実装
-   - コンストラクタの更新
-   - StateObserver実装の追加
-   - 通知メカニズムの調整
-
-3. ハンドラーの更新
-   - WebSocket処理の修正
-   - 制御APIの更新
-   - エラーハンドリングの改善
+3. エッジケース
+   - 高速な状態変更
+   - 同時実行時の動作
+   - エラー発生時の挙動

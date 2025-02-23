@@ -3,23 +3,23 @@ package ui
 import (
 	"log"
 	"net/http"
+	"state_sample/internal/domain/core"
+	"state_sample/internal/usecase"
 	"sync"
 
 	"github.com/gorilla/websocket"
-
-	"state_sample/internal/fsm"
 )
 
 // StateServer はWebSocketを通じて状態変更を通知するサーバーです
 type StateServer struct {
-	stateFacade fsm.StateFacade
+	stateFacade usecase.StateFacade
 	clients     map[*websocket.Conn]bool
 	upgrader    websocket.Upgrader
 	mu          sync.RWMutex
 }
 
 // NewStateServer は新しいStateServerインスタンスを作成します
-func NewStateServer(facade fsm.StateFacade) *StateServer {
+func NewStateServer(facade usecase.StateFacade) *StateServer {
 	log.Println("Creating new state server instance")
 	server := &StateServer{
 		stateFacade: facade,
@@ -46,11 +46,11 @@ func (s *StateServer) OnStateChanged(state string) {
 
 	stateInfo := currentPhase.GetStateInfo()
 	update := struct {
-		Type    string             `json:"type"`
-		State   string             `json:"state"`
-		Info    *fsm.GameStateInfo `json:"info,omitempty"`
-		Phase   string             `json:"phase"`
-		Message string             `json:"message,omitempty"`
+		Type    string              `json:"type"`
+		State   string              `json:"state"`
+		Info    *core.GameStateInfo `json:"info,omitempty"`
+		Phase   string              `json:"phase"`
+		Message string              `json:"message,omitempty"`
 	}{
 		Type:    "state_change",
 		State:   state,
