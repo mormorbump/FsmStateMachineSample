@@ -1,10 +1,11 @@
 package core
 
-// StateObserver は監視者のインターフェースを定義します
+// StateObserver 状態を監視するインターフェース
 type StateObserver interface {
 	OnStateChanged(state string)
 }
 
+// TimeObserver 時間を監視するインターフェース
 type TimeObserver interface {
 	OnTimeTicked()
 }

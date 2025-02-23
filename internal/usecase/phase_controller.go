@@ -10,7 +10,6 @@ import (
 	"time"
 )
 
-// PhaseController はフェーズの状態を監視・管理します
 type PhaseController struct {
 	phases                 entity.Phases
 	currentPhase           *entity.Phase
@@ -19,7 +18,6 @@ type PhaseController struct {
 	log                    *zap.Logger
 }
 
-// NewPhaseController は新しいPhaseControllerインスタンスを作成します
 func NewPhaseController(phases entity.Phases) *PhaseController {
 	log := logger.DefaultLogger()
 	pc := &PhaseController{
@@ -51,14 +49,12 @@ func (pc *PhaseController) OnStateChanged(state string) {
 	}
 }
 
-// GetCurrentPhase は現在のフェーズを返します
 func (pc *PhaseController) GetCurrentPhase() *entity.Phase {
 	pc.mu.RLock()
 	defer pc.mu.RUnlock()
 	return pc.currentPhase
 }
 
-// SetCurrentPhase は現在のフェーズを設定します
 func (pc *PhaseController) SetCurrentPhase(phase *entity.Phase) {
 	pc.mu.Lock()
 	defer pc.mu.Unlock()
@@ -76,7 +72,6 @@ func (pc *PhaseController) SetCurrentPhase(phase *entity.Phase) {
 	}
 }
 
-// GetPhases は管理しているフェーズのスライスを返します
 func (pc *PhaseController) GetPhases() entity.Phases {
 	pc.mu.RLock()
 	defer pc.mu.RUnlock()
@@ -86,6 +81,11 @@ func (pc *PhaseController) GetPhases() entity.Phases {
 func (pc *PhaseController) Start(ctx context.Context) error {
 	pc.log.Debug("PhaseController", zap.String("action", "Starting phase sequence"))
 	phase, err := pc.phases.ProcessOrder(ctx)
+	// 存在しなければfinishで終了
+	if phase == nil {
+		pc.NotifyStateChanged(core.StateFinish)
+		return err
+	}
 	pc.currentPhase = phase
 	return err
 }

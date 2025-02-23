@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// StateFacade はフェーズ管理システムのインターフェースを提供します
+// StateFacade フェーズ管理システムのインターフェースを提供
 type StateFacade interface {
 	Start(ctx context.Context) error
 	Reset(ctx context.Context) error
@@ -15,12 +15,10 @@ type StateFacade interface {
 	GetController() *PhaseController
 }
 
-// stateFacadeImpl はStateFacadeの実装です
 type stateFacadeImpl struct {
 	controller *PhaseController
 }
 
-// NewStateFacade は新しいStateFacadeインスタンスを作成します
 func NewStateFacade() StateFacade {
 	phases := entity.Phases{
 		entity.NewPhase("BUILD_PHASE", 3*time.Second, 1),
@@ -39,22 +37,18 @@ func NewStateFacade() StateFacade {
 	}
 }
 
-// Start はフェーズシステムを開始します
 func (sf *stateFacadeImpl) Start(ctx context.Context) error {
 	return sf.controller.Start(ctx)
 }
 
-// Reset はフェーズシステムをリセットします
 func (sf *stateFacadeImpl) Reset(ctx context.Context) error {
 	return sf.controller.Reset(ctx)
 }
 
-// GetCurrentPhase は現在アクティブなフェーズを返します
 func (sf *stateFacadeImpl) GetCurrentPhase() *entity.Phase {
 	return sf.controller.GetCurrentPhase()
 }
 
-// GetController はPhaseControllerを返します
 func (sf *stateFacadeImpl) GetController() *PhaseController {
 	return sf.controller
 }

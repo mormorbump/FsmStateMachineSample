@@ -13,7 +13,7 @@ type TimeSubject interface {
 	NotifyTimeTicker()
 }
 
-// IntervalTimer は時間間隔ベースのイベント通知を管理します
+// IntervalTimer 時間間隔ベースのイベント通知を管理します
 type IntervalTimer struct {
 	observers   []TimeObserver
 	interval    time.Duration
@@ -25,7 +25,6 @@ type IntervalTimer struct {
 	log         *zap.Logger
 }
 
-// NewIntervalTimer は新しいIntervalTimerインスタンスを作成します
 func NewIntervalTimer(interval time.Duration) *IntervalTimer {
 	log := logger.DefaultLogger()
 	log.Debug("Creating new IntervalTimer with interval: %v", zap.Duration("interval", interval))
@@ -36,7 +35,6 @@ func NewIntervalTimer(interval time.Duration) *IntervalTimer {
 	}
 }
 
-// Start は時間管理を開始します
 func (t *IntervalTimer) Start() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -54,7 +52,6 @@ func (t *IntervalTimer) Start() {
 	go t.run()
 }
 
-// Stop は時間管理を停止します
 func (t *IntervalTimer) Stop() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -73,27 +70,23 @@ func (t *IntervalTimer) Stop() {
 	t.stopChan = make(chan struct{})
 }
 
-// IsRunning は時間管理が実行中かどうかを返します
 func (t *IntervalTimer) IsRunning() bool {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.isRunning
 }
 
-// GetNextTrigger は次のイベント予定時刻を返します
 func (t *IntervalTimer) GetNextTrigger() time.Time {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.nextTrigger
 }
 
-// updateNextTrigger は次のイベント予定時刻を更新します
 func (t *IntervalTimer) updateNextTrigger() {
 	t.nextTrigger = time.Now().Add(t.interval)
 	t.log.Debug("Next event scheduled at", zap.Time("next_trigger", t.nextTrigger))
 }
 
-// UpdateInterval はインターバルを更新します
 func (t *IntervalTimer) UpdateInterval(newInterval time.Duration) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -115,14 +108,13 @@ func (t *IntervalTimer) UpdateInterval(newInterval time.Duration) {
 	}
 }
 
-// GetInterval は現在のインターバルを返します
 func (t *IntervalTimer) GetInterval() time.Duration {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.interval
 }
 
-// run は時間管理のメインループを実行します
+// run 時間管理のメインループを実行
 func (t *IntervalTimer) run() {
 	t.log.Debug("Starting timer loop")
 	for {
@@ -137,14 +129,12 @@ func (t *IntervalTimer) run() {
 	}
 }
 
-// AddObserver は監視者を追加します
 func (t *IntervalTimer) AddObserver(observer TimeObserver) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.observers = append(t.observers, observer)
 }
 
-// RemoveObserver は監視者を削除します
 func (t *IntervalTimer) RemoveObserver(observer TimeObserver) {
 	t.mu.Lock()
 	defer t.mu.Unlock()

@@ -62,9 +62,9 @@ func NewPhase(phaseType string, interval time.Duration, order int) *Phase {
 		},
 		"after_event": func(ctx context.Context, e *fsm.Event) {
 			p.log.Debug("Phase state changed", zap.String("state", p.CurrentState()))
-			//if p.isActive {
-			p.NotifyStateChanged(p.CurrentState())
-			//}
+			if p.isActive {
+				p.NotifyStateChanged(p.CurrentState())
+			}
 		},
 	}
 
@@ -174,5 +174,5 @@ func (p Phases) ProcessOrder(ctx context.Context) (*Phase, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("no phases available")
+	return nil, nil
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// handleWebSocket はWebSocket接続を処理します
+// handleWebSocket WebSocket接続を処理
 func (s *StateServer) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	log := logger.DefaultLogger()
 	conn, err := s.upgrader.Upgrade(w, r, nil)
@@ -29,7 +29,6 @@ func (s *StateServer) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		s.OnStateChanged(currentPhase.CurrentState())
 	}
 
-	// クライアントからのメッセージを処理
 	go s.recvWsMessage(conn)()
 }
 
@@ -67,7 +66,7 @@ func (s *StateServer) recvWsMessage(conn *websocket.Conn) func() {
 	}
 }
 
-// handleAutoTransition は自動遷移の制御を処理します
+// handleAutoTransition 自動遷移の制御を処理
 func (s *StateServer) handleAutoTransition(w http.ResponseWriter, r *http.Request) {
 	log := logger.DefaultLogger()
 	action := r.URL.Query().Get("action")
@@ -94,7 +93,6 @@ func (s *StateServer) handleAutoTransition(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusOK)
 }
 
-// Start はサーバーを起動します
 func (s *StateServer) Start(addr string) error {
 	log := logger.DefaultLogger()
 	r := mux.NewRouter()

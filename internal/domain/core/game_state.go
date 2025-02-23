@@ -1,6 +1,5 @@
 package core
 
-// State は状態の定数を定義します
 const (
 	StateReady  = "ready"
 	StateActive = "active"
@@ -8,7 +7,6 @@ const (
 	StateFinish = "finish"
 )
 
-// Event はイベントの定数を定義します
 const (
 	EventActivate = "activate"
 	EventNext     = "next"
@@ -16,7 +14,6 @@ const (
 	EventReset    = "reset"
 )
 
-// GameStateInfo は状態に関する情報を保持します
 type GameStateInfo struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
@@ -24,7 +21,6 @@ type GameStateInfo struct {
 	Message     string   `json:"message,omitempty"`
 }
 
-// GetGameStateInfo は指定された状態の情報を返します
 func GetGameStateInfo(state string) *GameStateInfo {
 	stateInfoMap := map[string]*GameStateInfo{
 		StateReady: {

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"state_sample/internal/domain/core"
@@ -10,7 +11,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// StateServer はWebSocketを通じて状態変更を通知するサーバーです
+// StateServer WebSocketを通じて状態変更を通知するサーバー
 type StateServer struct {
 	stateFacade usecase.StateFacade
 	clients     map[*websocket.Conn]bool
@@ -18,7 +19,6 @@ type StateServer struct {
 	mu          sync.RWMutex
 }
 
-// NewStateServer は新しいStateServerインスタンスを作成します
 func NewStateServer(facade usecase.StateFacade) *StateServer {
 	log.Println("Creating new state server instance")
 	server := &StateServer{
@@ -31,13 +31,11 @@ func NewStateServer(facade usecase.StateFacade) *StateServer {
 		},
 	}
 
-	// PhaseControllerの監視を設定
 	facade.GetController().AddObserver(server)
 
 	return server
 }
 
-// OnStateChanged は状態変更時に呼び出されます
 func (s *StateServer) OnStateChanged(state string) {
 	currentPhase := s.stateFacade.GetCurrentPhase()
 	if currentPhase == nil {
@@ -56,12 +54,11 @@ func (s *StateServer) OnStateChanged(state string) {
 		State:   state,
 		Info:    stateInfo,
 		Phase:   currentPhase.Type,
-		Message: stateInfo.Message,
+		Message: fmt.Sprintf("interval: %v, order: %v, message: %v", currentPhase.Interval, currentPhase.Order, stateInfo.Message),
 	}
 	s.broadcastUpdate(update)
 }
 
-// OnError はエラー発生時に呼び出されます
 func (s *StateServer) OnError(err error) {
 	update := struct {
 		Type  string `json:"type"`
@@ -73,7 +70,6 @@ func (s *StateServer) OnError(err error) {
 	s.broadcastUpdate(update)
 }
 
-// broadcastUpdate は全てのクライアントに更新を送信します
 func (s *StateServer) broadcastUpdate(update interface{}) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -87,7 +83,6 @@ func (s *StateServer) broadcastUpdate(update interface{}) {
 	}
 }
 
-// Close はサーバーのリソースを解放します
 func (s *StateServer) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
