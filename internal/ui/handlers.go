@@ -22,7 +22,10 @@ func (s *StateServer) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	// 初期状態を送信
-	s.OnStateChanged(s.stateFacade.GetCurrentState())
+	currentPhase := s.stateFacade.GetCurrentPhase()
+	if currentPhase != nil {
+		s.OnStateChanged(currentPhase.CurrentState())
+	}
 
 	// クライアントからのメッセージを処理
 	go func() {
@@ -48,7 +51,10 @@ func (s *StateServer) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			if err := s.stateFacade.Start(context.Background()); err != nil {
 				s.OnError(err)
 			} else {
-				s.OnStateChanged(s.stateFacade.GetCurrentState())
+				currentPhase := s.stateFacade.GetCurrentPhase()
+				if currentPhase != nil {
+					s.OnStateChanged(currentPhase.CurrentState())
+				}
 			}
 		}
 	}()
@@ -82,9 +88,6 @@ func (s *StateServer) handleAutoTransition(w http.ResponseWriter, r *http.Reques
 
 // Start はサーバーを起動します
 func (s *StateServer) Start(addr string) error {
-	// オブザーバーとして自身を登録
-	s.stateFacade.AddObserver(s)
-
 	r := mux.NewRouter()
 
 	r.HandleFunc("/ws", s.handleWebSocket)

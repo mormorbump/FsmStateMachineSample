@@ -7,22 +7,22 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"state_sample/internal/facade"
+	"state_sample/internal/fsm"
 )
 
 // StateServer はWebSocketを通じて状態変更を通知するサーバーです
 type StateServer struct {
-	stateFacade facade.StateFacade
+	stateFacade fsm.StateFacade
 	clients     map[*websocket.Conn]bool
 	upgrader    websocket.Upgrader
 	mu          sync.RWMutex
 }
 
 // NewStateServer は新しいStateServerインスタンスを作成します
-func NewStateServer() *StateServer {
+func NewStateServer(facade fsm.StateFacade) *StateServer {
 	log.Println("Creating new state server instance")
 	server := &StateServer{
-		stateFacade: facade.NewStateFacade(),
+		stateFacade: facade,
 		clients:     make(map[*websocket.Conn]bool),
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
@@ -31,23 +31,32 @@ func NewStateServer() *StateServer {
 		},
 	}
 
+	// PhaseControllerの監視を設定
+	facade.GetController().AddObserver(server)
+
 	return server
 }
 
 // OnStateChanged は状態変更時に呼び出されます
-func (s *StateServer) OnStateChanged(state facade.StateInfo) {
+func (s *StateServer) OnStateChanged(state string) {
+	currentPhase := s.stateFacade.GetCurrentPhase()
+	if currentPhase == nil {
+		return
+	}
+
+	stateInfo := currentPhase.GetStateInfo()
 	update := struct {
-		Type           string      `json:"type"`
-		State          string      `json:"state"`
-		Info           interface{} `json:"info,omitempty"`
-		LastTransition string      `json:"lastTransition"`
-		NextTransition string      `json:"nextTransition"`
+		Type    string             `json:"type"`
+		State   string             `json:"state"`
+		Info    *fsm.GameStateInfo `json:"info,omitempty"`
+		Phase   string             `json:"phase"`
+		Message string             `json:"message,omitempty"`
 	}{
-		Type:           "state_change",
-		State:          state.State,
-		Info:           state.Info,
-		LastTransition: state.LastTransition.Format(http.TimeFormat),
-		NextTransition: state.NextTransition.Format(http.TimeFormat),
+		Type:    "state_change",
+		State:   state,
+		Info:    stateInfo,
+		Phase:   currentPhase.Type,
+		Message: stateInfo.Message,
 	}
 	s.broadcastUpdate(update)
 }
@@ -88,5 +97,5 @@ func (s *StateServer) Close() error {
 	}
 	s.clients = nil
 
-	return s.stateFacade.Close()
+	return nil
 }

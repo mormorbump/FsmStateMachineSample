@@ -1,120 +1,135 @@
-# 実装計画
+# UI層の更新設計
 
-## 1. プロジェクト構造の作成
+## 1. StateServerの更新
 
-```bash
-state_sample/
-├── internal/
-│   ├── fsm/
-│   │   ├── state.go
-│   │   └── context.go
-│   └── ui/
-│       ├── server.go
-│       └── static/
-│           ├── index.html
-│           ├── style.css
-│           └── script.js
-```
-
-## 2. FSMの実装
-
-### state.go
-- 状態とイベントの定数定義
-- 状態遷移の定義
-- エラー型の定義
-
-### context.go
-- FSMコンテキストの構造体定義
-- 状態遷移のメソッド実装
-- オブザーバーパターンの実装
-
-## 3. HTTPサーバーとWebSocket
-
-### server.go
-- HTTPルーティングの設定
-- WebSocketハンドラーの実装
-- 状態変更通知の実装
-- エラーレスポンスの定義
-
-## 4. フロントエンドUI
-
-### index.html
-```html
-<!DOCTYPE html>
-<html>
-<head>
-    <title>State Machine Visualizer</title>
-    <link rel="stylesheet" href="style.css">
-</head>
-<body>
-    <div id="state-diagram"></div>
-    <div id="controls"></div>
-    <div id="status"></div>
-    <script src="script.js"></script>
-</body>
-</html>
-```
-
-### style.css
-- 状態図のスタイリング
-- ボタンとコントロールのデザイン
-- レスポンシブデザインの実装
-
-### script.js
-- WebSocket接続の管理
-- SVG状態図の描画
-- 状態遷移のアニメーション
-- エラーハンドリングとUI更新
-
-## 5. エラーハンドリング
-
-### エラー型
+### 1.1 依存関係の変更
 ```go
-type StateError struct {
-    Code    string
-    Message string
-    Details interface{}
+type StateServer struct {
+    stateFacade fsm.StateFacade
+    clients     map[*websocket.Conn]bool
+    upgrader    websocket.Upgrader
+    mu          sync.RWMutex
 }
 ```
 
-### 実装するエラーケース
-1. 不正な状態遷移
-2. WebSocket接続エラー
-3. サーバー内部エラー
-4. クライアントリクエストエラー
-
-## 6. テスト計画
-
-### ユニットテスト
-- FSMの状態遷移テスト
-- エラーハンドリングテスト
-- WebSocketメッセージングテスト
-
-### 統合テスト
-- エンドツーエンドの状態遷移テスト
-- UIとサーバー間の通信テスト
-
-## 7. 依存関係
-
+### 1.2 コンストラクタの更新
 ```go
-require (
-    github.com/looplab/fsm v0.3.0
-    github.com/gorilla/websocket v1.5.0
-    github.com/gorilla/mux v1.8.0
-)
+func NewStateServer(facade fsm.StateFacade) *StateServer {
+    server := &StateServer{
+        stateFacade: facade,
+        clients:     make(map[*websocket.Conn]bool),
+        upgrader: websocket.Upgrader{
+            CheckOrigin: func(r *http.Request) bool {
+                return true
+            },
+        },
+    }
+
+    // PhaseControllerの監視を設定
+    facade.GetController().AddObserver(server)
+
+    return server
+}
 ```
 
-## 8. 実装の注意点
+### 1.3 StateObserverインターフェースの実装
+```go
+// OnStateChanged は状態変更時に呼び出されます
+func (s *StateServer) OnStateChanged(state string) {
+    currentPhase := s.stateFacade.GetCurrentPhase()
+    if currentPhase == nil {
+        return
+    }
 
-1. コードの可読性と保守性を重視
-2. エラーハンドリングを適切に実装
-3. コメントとドキュメントを充実
-4. テストカバレッジの確保
-5. セキュリティ考慮事項の実装
+    stateInfo := currentPhase.GetStateInfo()
+    update := struct {
+        Type    string           `json:"type"`
+        State   string           `json:"state"`
+        Info    *fsm.GameStateInfo `json:"info,omitempty"`
+        Phase   string           `json:"phase"`
+        Message string           `json:"message,omitempty"`
+    }{
+        Type:    "state_change",
+        State:   state,
+        Info:    stateInfo,
+        Phase:   currentPhase.Type,
+        Message: stateInfo.Message,
+    }
+    s.broadcastUpdate(update)
+}
+```
 
-## 9. 今後の拡張性
+## 2. ハンドラーの更新
 
-1. 新しい状態やイベントの追加
-2. カスタム条件による遷移制御
-3. 状態履歴の保存と表示
-4. 複数のFSMインスタンスの管理
+### 2.1 WebSocket接続ハンドラー
+```go
+func (s *StateServer) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+    conn, err := s.upgrader.Upgrade(w, r, nil)
+    if err != nil {
+        log.Printf("WebSocket upgrade failed: %v", err)
+        return
+    }
+
+    s.mu.Lock()
+    s.clients[conn] = true
+    s.mu.Unlock()
+
+    // 初期状態を送信
+    currentPhase := s.stateFacade.GetCurrentPhase()
+    if currentPhase != nil {
+        s.OnStateChanged(currentPhase.CurrentState())
+    }
+}
+```
+
+### 2.2 制御ハンドラー
+```go
+func (s *StateServer) handleStart(w http.ResponseWriter, r *http.Request) {
+    if err := s.stateFacade.Start(r.Context()); err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    w.WriteHeader(http.StatusOK)
+}
+
+func (s *StateServer) handleReset(w http.ResponseWriter, r *http.Request) {
+    if err := s.stateFacade.Reset(r.Context()); err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    w.WriteHeader(http.StatusOK)
+}
+```
+
+## 3. メリット
+
+1. FSM層との整合性
+   - 新しいインターフェースの活用
+   - 適切な状態情報の利用
+   - 一貫した監視メカニズム
+
+2. シンプルな実装
+   - 明確な依存関係
+   - 直接的な状態アクセス
+   - 効率的な通知
+
+3. 拡張性
+   - 新しい状態情報の追加が容易
+   - クライアント通知の柔軟性
+   - エラーハンドリングの改善
+
+## 4. 実装手順
+
+1. 依存関係の更新
+   - import文の修正
+   - インターフェースの更新
+
+2. StateServerの実装
+   - コンストラクタの更新
+   - StateObserver実装の追加
+   - 通知メカニズムの調整
+
+3. ハンドラーの更新
+   - WebSocket処理の修正
+   - 制御APIの更新
+   - エラーハンドリングの改善
