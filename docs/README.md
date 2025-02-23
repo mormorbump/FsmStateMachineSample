@@ -63,18 +63,25 @@ sequenceDiagram
     participant C as Client
     participant S as StateServer
     participant F as StateFacade
+    participant PC as PhaseController
     participant P as Phase
 
     C->>S: WebSocket Connect
     S->>F: Get Current State
-    F->>P: Get State Info
-    P-->>S: State Info
+    F->>PC: Get Current Phase
+    PC->>P: Get State Info
+    P-->>PC: State Info
+    PC-->>F: Phase State
+    F-->>S: Current State
     S-->>C: Initial State
 
     C->>S: Send Command
     S->>F: Execute Action
-    F->>P: Update State
-    P-->>S: State Changed
+    F->>PC: Process Command
+    PC->>P: Update State
+    P-->>PC: State Changed
+    PC-->>F: Phase Updated
+    F-->>S: State Changed
     S-->>C: New State
 ```
 
