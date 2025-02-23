@@ -1,0 +1,275 @@
+/* 全体のスタイル */
+body {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: #f5f5f5;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+h1 {
+    text-align: center;
+    color: #333;
+    margin-bottom: 30px;
+}
+
+/* 状態表示のスタイル */
+.state-container {
+    background-color: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.current-state {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.state-display {
+    font-size: 24px;
+    font-weight: bold;
+    color: #2196F3;
+    padding: 10px;
+    border: 2px solid #2196F3;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+/* 状態遷移図のスタイル */
+.state-diagram {
+    margin: 30px 0;
+    overflow: hidden;
+}
+
+#state-svg {
+    width: 100%;
+    height: auto;
+}
+
+/* 状態のスタイル */
+.state circle {
+    fill: #fff;
+    stroke: #2196F3;
+    stroke-width: 2;
+}
+
+.state text {
+    text-anchor: middle;
+    dominant-baseline: middle;
+    font-size: 14px;
+    fill: #333;
+}
+
+.state.active circle {
+    fill: #2196F3;
+}
+
+.state.active text {
+    fill: white;
+}
+
+/* 遷移矢印のスタイル */
+.transition path {
+    fill: none;
+    stroke: #666;
+    stroke-width: 2;
+    marker-end: url(#arrowhead);
+}
+
+.transition text {
+    text-anchor: middle;
+    font-size: 12px;
+    fill: #666;
+}
+
+.transition.active path {
+    stroke: #2196F3;
+    stroke-width: 3;
+}
+
+.transition.active text {
+    fill: #2196F3;
+    font-weight: bold;
+}
+
+/* コントロールボタンのスタイル */
+.controls {
+    text-align: center;
+    margin-top: 20px;
+    padding: 20px;
+    border-top: 1px solid #eee;
+}
+
+.control-btn {
+    background-color: #2196F3;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    margin: 0 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.3s ease;
+}
+
+.control-btn:hover:not(:disabled) {
+    background-color: #1976D2;
+    transform: translateY(-1px);
+}
+
+.control-btn:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* 自動遷移コントロールのスタイル */
+.auto-transition-controls {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+}
+
+#start-auto {
+    background-color: #4CAF50;
+}
+
+#start-auto:hover:not(:disabled) {
+    background-color: #388E3C;
+}
+
+#stop-auto {
+    background-color: #F44336;
+}
+
+#stop-auto:hover:not(:disabled) {
+    background-color: #D32F2F;
+}
+
+#reset-btn {
+    background-color: #FF9800;
+}
+
+#reset-btn:hover:not(:disabled) {
+    background-color: #F57C00;
+}
+
+.transition-info {
+    margin-top: 10px;
+    font-size: 14px;
+    color: #666;
+    animation: pulse 2s infinite;
+}
+
+/* 状態メッセージのスタイル */
+.state-message {
+    margin-top: 15px;
+    padding: 10px 20px;
+    border-radius: 4px;
+    font-size: 16px;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.state-message.ready {
+    background-color: #E3F2FD;
+    color: #1565C0;
+    border: 1px solid #90CAF9;
+}
+
+.state-message.active {
+    background-color: #E8F5E9;
+    color: #2E7D32;
+    border: 1px solid #A5D6A7;
+    animation: processing 2s infinite;
+}
+
+.state-message.next {
+    background-color: #FFF3E0;
+    color: #E65100;
+    border: 1px solid #FFCC80;
+}
+
+.state-message.finish {
+    background-color: #E8EAF6;
+    color: #283593;
+    border: 1px solid #9FA8DA;
+    font-weight: bold;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.6; }
+    100% { opacity: 1; }
+}
+
+@keyframes processing {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+    100% { transform: scale(1); }
+}
+
+/* ステータスメッセージのスタイル */
+.status-container {
+    margin-top: 30px;
+    text-align: center;
+}
+
+.status-message {
+    padding: 10px 20px;
+    border-radius: 4px;
+    display: inline-block;
+    transition: all 0.3s ease;
+}
+
+.status-message.error {
+    background-color: #ffebee;
+    color: #c62828;
+    border: 1px solid #ef9a9a;
+}
+
+.status-message.success {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+    border: 1px solid #a5d6a7;
+}
+
+/* レスポンシブデザイン */
+@media (max-width: 768px) {
+    .container {
+        padding: 10px;
+    }
+
+    .control-btn {
+        margin: 5px;
+        padding: 8px 16px;
+        font-size: 14px;
+    }
+
+    .state-display {
+        font-size: 20px;
+    }
+
+    .auto-transition-controls {
+        gap: 10px;
+    }
+
+    .transition-info {
+        font-size: 12px;
+    }
+
+    .state-message {
+        font-size: 14px;
+        padding: 8px 16px;
+    }
+}

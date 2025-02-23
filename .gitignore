@@ -1,0 +1,14 @@
+.idea
+.DS_Store
+*.log
+bin/
+tmp/
+.env
+secret.key
+.clinerules
+memory-bank
+
+serverLift-Go-ServerSDK-5.0.0.zip
+GameLift-Go-ServerSDK-5.0.0/
+gamelift-anywhere-with-autoscaling-group/cdk-typescript/gamebinaries/main
+gamelift-anywhere-with-autoscaling-group/cdk/gamebinaries/main

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>状態遷移ビジュアライザー</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>状態遷移ビジュアライザー</h1>
+        
+        <div class="state-container">
+            <div class="current-state">
+                <h2>現在の状態</h2>
+                <div id="current-state" class="state-display">ready</div>
+            </div>
+
+            <div class="state-diagram">
+                <svg id="state-svg" viewBox="0 0 800 400">
+                    <!-- 状態を表す円 -->
+                    <g id="states">
+                        <g class="state" data-state="ready">
+                            <circle cx="100" cy="200" r="40" />
+                            <text x="100" y="200">Ready</text>
+                        </g>
+                        <g class="state" data-state="active">
+                            <circle cx="300" cy="200" r="40" />
+                            <text x="300" y="200">Active</text>
+                        </g>
+                        <g class="state" data-state="next">
+                            <circle cx="500" cy="200" r="40" />
+                            <text x="500" y="200">Next</text>
+                        </g>
+                        <g class="state" data-state="finish">
+                            <circle cx="700" cy="200" r="40" />
+                            <text x="700" y="200">Finish</text>
+                        </g>
+                    </g>
+
+                    <!-- 遷移を表す矢印 -->
+                    <g id="transitions">
+                        <g class="transition" data-event="activate">
+                            <path d="M140,200 L260,200" />
+                            <text x="200" y="180">activate</text>
+                        </g>
+                        <g class="transition" data-event="next">
+                            <path d="M340,200 L460,200" />
+                            <text x="400" y="180">next</text>
+                        </g>
+                        <g class="transition" data-event="finish">
+                            <path d="M540,200 L660,200" />
+                            <text x="600" y="180">finish</text>
+                        </g>
+                    </g>
+                </svg>
+            </div>
+
+            <div class="controls">
+                <button id="activate-btn" class="control-btn">Activate</button>
+                <button id="next-btn" class="control-btn">Next</button>
+                <button id="finish-btn" class="control-btn">Finish</button>
+            </div>
+        </div>
+
+        <div class="status-container">
+            <h2>ステータス</h2>
+            <div id="status-message" class="status-message"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
