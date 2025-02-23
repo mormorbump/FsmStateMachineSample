@@ -1,16 +1,17 @@
 package core
 
 import (
-	"go.uber.org/zap"
 	logger "state_sample/internal/lib"
 	"sync"
+
+	"go.uber.org/zap"
 )
 
 // StateSubject 状態遷移する対象のインターフェース
 type StateSubject interface {
 	AddObserver(observer StateObserver)
 	RemoveObserver(observer StateObserver)
-	NotifyStateChanged()
+	NotifyStateChanged(state string)
 }
 
 type StateSubjectImpl struct {
@@ -25,18 +26,24 @@ func NewStateSubjectImpl() *StateSubjectImpl {
 }
 
 func (s *StateSubjectImpl) AddObserver(observer StateObserver) {
+	if observer == nil {
+		return // nilオブザーバーは登録しない
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.observers = append(s.observers, observer)
 }
 
 func (s *StateSubjectImpl) RemoveObserver(observer StateObserver) {
+	if observer == nil {
+		return // nilオブザーバーは無視
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i, obs := range s.observers {
 		if obs == observer {
 			s.observers = append(s.observers[:i], s.observers[i+1:]...)
-			break
+			return
 		}
 	}
 }
