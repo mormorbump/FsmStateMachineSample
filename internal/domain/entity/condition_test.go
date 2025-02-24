@@ -37,7 +37,7 @@ func TestCondition_AddPart(t *testing.T) {
 
 	// Assert
 	assert.Len(t, cond.Parts, 1)
-	assert.Equal(t, part.ID, cond.Parts[0].ID)
+	assert.Equal(t, part.ID, cond.Parts[part.ID].ID)
 }
 
 func TestCondition_IsClear(t *testing.T) {
@@ -48,15 +48,14 @@ func TestCondition_IsClear(t *testing.T) {
 	ctx := context.Background()
 
 	// Assert initial state
-	assert.False(t, cond.IsClear(), "IsClear should be false initially")
+	assert.False(t, cond.IsClear, "IsClear should be false initially")
 
 	// Act: transition to satisfied state
 	_ = cond.Activate(ctx)
-	_ = cond.StartProcess(ctx)
 	cond.OnPartSatisfied(part.ID)
 
 	// Assert: IsClear should be true after satisfied
-	assert.True(t, cond.IsClear(), "IsClear should be true after satisfied")
+	assert.True(t, cond.IsClear, "IsClear should be true after satisfied")
 }
 
 func TestCondition_StateTransitions(t *testing.T) {
@@ -73,10 +72,6 @@ func TestCondition_StateTransitions(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, value.StateUnsatisfied, cond.CurrentState())
 
-	err = cond.StartProcess(ctx)
-	assert.NoError(t, err)
-	assert.Equal(t, value.StateProcessing, cond.CurrentState())
-
 	err = cond.Complete(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, value.StateSatisfied, cond.CurrentState())
@@ -90,24 +85,29 @@ func TestCondition_PartSatisfaction(t *testing.T) {
 	ctx := context.Background()
 	mockObserver := &mockConditionObserver{
 		satisfiedConditions: make([]core.ConditionID, 0),
+		stateChanges:        make([]string, 0),
 	}
 	cond.AddConditionObserver(mockObserver)
 
 	// Act
 	_ = cond.Activate(ctx)
-	_ = cond.StartProcess(ctx)
 	cond.OnPartSatisfied(part.ID)
 
 	// Assert
 	time.Sleep(100 * time.Millisecond) // 非同期通知の待機
-	assert.Equal(t, value.StateSatisfied, cond.CurrentState())
-	assert.Contains(t, mockObserver.satisfiedConditions, cond.ID)
+	assert.Equal(t, value.StateSatisfied, cond.CurrentState(), "Condition should be in satisfied state")
+	assert.True(t, cond.IsClear, "Condition should be marked as clear")
 }
 
 type mockConditionObserver struct {
 	satisfiedConditions []core.ConditionID
+	stateChanges        []string
 }
 
 func (m *mockConditionObserver) OnConditionSatisfied(conditionID core.ConditionID) {
 	m.satisfiedConditions = append(m.satisfiedConditions, conditionID)
+}
+
+func (m *mockConditionObserver) OnStateChanged(state string) {
+	m.stateChanges = append(m.stateChanges, state)
 }

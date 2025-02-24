@@ -73,8 +73,10 @@ func NewConditionPart(id core.ConditionPartID, label string) *ConditionPart {
 			log.Debug("ConditionPart enter_unsatisfied",
 				zap.Int64("id", int64(p.ID)),
 			)
-			if err := p.strategy.Evaluate(ctx, p); err != nil {
-				p.log.Error("failed to evaluate strategy: %w", zap.Error(err))
+			if p.strategy != nil {
+				if err := p.strategy.Evaluate(ctx, p); err != nil {
+					p.log.Error("failed to evaluate strategy", zap.Error(err))
+				}
 			}
 		},
 		"enter_" + value.StateProcessing: func(ctx context.Context, e *fsm.Event) {},
@@ -83,9 +85,10 @@ func NewConditionPart(id core.ConditionPartID, label string) *ConditionPart {
 			p.log.Debug("part satisfied",
 				zap.Bool("IsClear", p.IsClear),
 			)
-			err := p.strategy.Cleanup()
-			if err != nil {
-				p.log.Error("failed to cleanup strategy: %w", zap.Error(err))
+			if p.strategy != nil {
+				if err := p.strategy.Cleanup(); err != nil {
+					p.log.Error("failed to cleanup strategy", zap.Error(err))
+				}
 			}
 			p.NotifyPartSatisfied(p.ID)
 		},

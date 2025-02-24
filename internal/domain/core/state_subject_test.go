@@ -4,35 +4,34 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 func TestStateSubjectImpl_AddObserver(t *testing.T) {
 	tests := []struct {
 		name     string
-		setup    func(*StateSubjectImpl, *MockStateObserver)
-		validate func(*testing.T, *StateSubjectImpl, *MockStateObserver)
+		setup    func(*StateSubjectImpl, *MockConditionObserver)
+		validate func(*testing.T, *StateSubjectImpl, *MockConditionObserver)
 	}{
 		{
 			name: "正常なObserver登録",
-			setup: func(s *StateSubjectImpl, m *MockStateObserver) {
+			setup: func(s *StateSubjectImpl, m *MockConditionObserver) {
 				s.AddObserver(m)
 			},
-			validate: func(t *testing.T, s *StateSubjectImpl, m *MockStateObserver) {
-				if len(s.observers) != 1 {
-					t.Errorf("Observer数 = %d, want 1", len(s.observers))
-				}
+			validate: func(t *testing.T, s *StateSubjectImpl, m *MockConditionObserver) {
+				assert.Len(t, s.observers, 1, "Observer数が期待値と異なります")
 			},
 		},
 		{
 			name: "重複Observer登録",
-			setup: func(s *StateSubjectImpl, m *MockStateObserver) {
+			setup: func(s *StateSubjectImpl, m *MockConditionObserver) {
 				s.AddObserver(m)
 				s.AddObserver(m)
 			},
-			validate: func(t *testing.T, s *StateSubjectImpl, m *MockStateObserver) {
-				if len(s.observers) != 2 {
-					t.Errorf("Observer数 = %d, want 2 (重複を許可)", len(s.observers))
-				}
+			validate: func(t *testing.T, s *StateSubjectImpl, m *MockConditionObserver) {
+				assert.Len(t, s.observers, 2, "Observer数が期待値と異なります（重複を許可）")
 			},
 		},
 	}
@@ -40,8 +39,8 @@ func TestStateSubjectImpl_AddObserver(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			subject := NewStateSubjectImpl()
-			observer := NewMockStateObserver()
-			
+			observer := NewMockConditionObserver()
+
 			tt.setup(subject, observer)
 			tt.validate(t, subject, observer)
 		})
@@ -51,43 +50,37 @@ func TestStateSubjectImpl_AddObserver(t *testing.T) {
 func TestStateSubjectImpl_RemoveObserver(t *testing.T) {
 	tests := []struct {
 		name     string
-		setup    func(*StateSubjectImpl, *MockStateObserver)
-		validate func(*testing.T, *StateSubjectImpl, *MockStateObserver)
+		setup    func(*StateSubjectImpl, *MockConditionObserver)
+		validate func(*testing.T, *StateSubjectImpl, *MockConditionObserver)
 	}{
 		{
 			name: "登録済みObserverの削除",
-			setup: func(s *StateSubjectImpl, m *MockStateObserver) {
+			setup: func(s *StateSubjectImpl, m *MockConditionObserver) {
 				s.AddObserver(m)
 				s.RemoveObserver(m)
 			},
-			validate: func(t *testing.T, s *StateSubjectImpl, m *MockStateObserver) {
-				if len(s.observers) != 0 {
-					t.Errorf("Observer数 = %d, want 0", len(s.observers))
-				}
+			validate: func(t *testing.T, s *StateSubjectImpl, m *MockConditionObserver) {
+				assert.Empty(t, s.observers, "Observerが正しく削除されていません")
 			},
 		},
 		{
 			name: "未登録Observerの削除",
-			setup: func(s *StateSubjectImpl, m *MockStateObserver) {
+			setup: func(s *StateSubjectImpl, m *MockConditionObserver) {
 				s.RemoveObserver(m)
 			},
-			validate: func(t *testing.T, s *StateSubjectImpl, m *MockStateObserver) {
-				if len(s.observers) != 0 {
-					t.Errorf("Observer数 = %d, want 0", len(s.observers))
-				}
+			validate: func(t *testing.T, s *StateSubjectImpl, m *MockConditionObserver) {
+				assert.Empty(t, s.observers, "未登録Observerの削除で予期しない動作が発生しました")
 			},
 		},
 		{
 			name: "複数回削除",
-			setup: func(s *StateSubjectImpl, m *MockStateObserver) {
+			setup: func(s *StateSubjectImpl, m *MockConditionObserver) {
 				s.AddObserver(m)
 				s.RemoveObserver(m)
 				s.RemoveObserver(m)
 			},
-			validate: func(t *testing.T, s *StateSubjectImpl, m *MockStateObserver) {
-				if len(s.observers) != 0 {
-					t.Errorf("Observer数 = %d, want 0", len(s.observers))
-				}
+			validate: func(t *testing.T, s *StateSubjectImpl, m *MockConditionObserver) {
+				assert.Empty(t, s.observers, "複数回削除で予期しない動作が発生しました")
 			},
 		},
 	}
@@ -95,8 +88,8 @@ func TestStateSubjectImpl_RemoveObserver(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			subject := NewStateSubjectImpl()
-			observer := NewMockStateObserver()
-			
+			observer := NewMockConditionObserver()
+
 			tt.setup(subject, observer)
 			tt.validate(t, subject, observer)
 		})
@@ -108,45 +101,37 @@ func TestStateSubjectImpl_NotifyStateChanged(t *testing.T) {
 		name          string
 		observerCount int
 		state         string
-		wantState     string
 	}{
 		{
 			name:          "単一Observerへの通知",
 			observerCount: 1,
 			state:         "test_state",
-			wantState:     "test_state",
 		},
 		{
 			name:          "複数Observerへの通知",
 			observerCount: 3,
 			state:         "test_state",
-			wantState:     "test_state",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			subject := NewStateSubjectImpl()
-			observers := make([]*MockStateObserver, tt.observerCount)
-			
+			observers := make([]*MockConditionObserver, tt.observerCount)
+
 			// Observerの作成と登録
 			for i := 0; i < tt.observerCount; i++ {
-				observers[i] = NewMockStateObserver()
+				observers[i] = NewMockConditionObserver()
+				observers[i].On("OnStateChanged", tt.state).Return()
 				subject.AddObserver(observers[i])
 			}
 
 			// 状態変更通知
 			subject.NotifyStateChanged(tt.state)
 
-			// 各Observerの状態確認
-			for i, observer := range observers {
-				states := observer.GetStateChanges()
-				if len(states) != 1 {
-					t.Errorf("Observer %d: 状態変更回数 = %d, want 1", i, len(states))
-				}
-				if len(states) > 0 && states[0] != tt.wantState {
-					t.Errorf("Observer %d: 状態 = %s, want %s", i, states[0], tt.wantState)
-				}
+			// 各Observerの呼び出しを検証
+			for _, observer := range observers {
+				observer.AssertCalled(t, "OnStateChanged", tt.state)
 			}
 		})
 	}
@@ -154,10 +139,10 @@ func TestStateSubjectImpl_NotifyStateChanged(t *testing.T) {
 
 func TestStateSubjectImpl_ConcurrentAccess(t *testing.T) {
 	subject := NewStateSubjectImpl()
-	observer := NewMockStateObserver()
+	observer := NewMockConditionObserver()
+	observer.On("OnStateChanged", "test_state").Return()
 	subject.AddObserver(observer)
 
-	// 並行アクセスのテスト
 	const (
 		goroutineCount = 10
 		operationCount = 100
@@ -201,35 +186,27 @@ func TestStateSubjectImpl_ConcurrentAccess(t *testing.T) {
 func TestStateSubjectImpl_EdgeCases(t *testing.T) {
 	t.Run("nilオブザーバーの登録と削除", func(t *testing.T) {
 		subject := NewStateSubjectImpl()
-		
+
 		// nilオブザーバーの登録を試みる
 		subject.AddObserver(nil)
-		if len(subject.observers) != 0 {
-			t.Error("nilオブザーバーが登録されてしまいました")
-		}
+		assert.Empty(t, subject.observers, "nilオブザーバーが登録されてしまいました")
 
 		// nilオブザーバーの削除を試みる
 		subject.RemoveObserver(nil)
-		if len(subject.observers) != 0 {
-			t.Error("nilオブザーバーの削除で予期しない動作が発生しました")
-		}
+		assert.Empty(t, subject.observers, "nilオブザーバーの削除で予期しない動作が発生しました")
 	})
 
 	t.Run("通知中のオブザーバー削除", func(t *testing.T) {
 		subject := NewStateSubjectImpl()
-		observer := NewMockStateObserver()
-		
-		// 通知中に自身を削除するオブザーバー
-		observer.SetOnStateChange(func(state string) {
+		observer := NewMockConditionObserver()
+		observer.On("OnStateChanged", "test_state").Run(func(args mock.Arguments) {
 			subject.RemoveObserver(observer)
-		})
+		}).Return()
 
 		subject.AddObserver(observer)
 		subject.NotifyStateChanged("test_state")
 
-		// 通知後にオブザーバーが正しく削除されていることを確認
-		if len(subject.observers) != 0 {
-			t.Error("通知中のオブザーバー削除が正しく動作していません")
-		}
+		assert.Empty(t, subject.observers, "通知中のオブザーバー削除が正しく動作していません")
+		observer.AssertExpectations(t)
 	})
 }

@@ -1,9 +1,10 @@
 package core
 
 import (
-	"go.uber.org/zap"
 	logger "state_sample/internal/lib"
 	"sync"
+
+	"go.uber.org/zap"
 )
 
 type ConditionSubject interface {
@@ -30,12 +31,18 @@ func NewConditionSubjectImpl() *ConditionSubjectImpl {
 }
 
 func (s *ConditionSubjectImpl) AddConditionObserver(observer ConditionObserver) {
+	if observer == nil {
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.observers = append(s.observers, observer)
 }
 
 func (s *ConditionSubjectImpl) RemoveConditionObserver(observer ConditionObserver) {
+	if observer == nil {
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i, obs := range s.observers {
@@ -52,6 +59,7 @@ func (s *ConditionSubjectImpl) NotifyConditionSatisfied(conditionID ConditionID)
 	s.mu.RLock()
 	observers := make([]ConditionObserver, len(s.observers))
 	copy(observers, s.observers)
+	s.mu.RUnlock()
 	for _, observer := range observers {
 		observer.OnConditionSatisfied(conditionID)
 	}
@@ -69,12 +77,18 @@ func NewConditionPartSubjectImpl() *ConditionPartSubjectImpl {
 }
 
 func (s *ConditionPartSubjectImpl) AddConditionPartObserver(observer ConditionPartObserver) {
+	if observer == nil {
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.observers = append(s.observers, observer)
 }
 
 func (s *ConditionPartSubjectImpl) RemoveConditionPartObserver(observer ConditionPartObserver) {
+	if observer == nil {
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i, obs := range s.observers {

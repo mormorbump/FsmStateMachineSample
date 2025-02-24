@@ -4,6 +4,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIntervalTimer_BasicOperations(t *testing.T) {
@@ -16,15 +19,14 @@ func TestIntervalTimer_BasicOperations(t *testing.T) {
 			fn: func(t *testing.T) {
 				timer := NewIntervalTimer(100 * time.Millisecond)
 				observer := NewMockTimeObserver()
+				observer.On("OnTimeTicked").Return()
 				timer.AddObserver(observer)
 
 				// タイマー開始
 				timer.Start()
 
 				// 最初のティックを待機
-				if !observer.WaitForTick(200 * time.Millisecond) {
-					t.Error("タイマーのティックが発生しませんでした")
-				}
+				require.True(t, observer.WaitForTick(200*time.Millisecond), "タイマーのティックが発生しませんでした")
 
 				// タイマー停止
 				timer.Stop()
@@ -36,9 +38,7 @@ func TestIntervalTimer_BasicOperations(t *testing.T) {
 				time.Sleep(200 * time.Millisecond)
 
 				// ティック数が増えていないことを確認
-				if count := observer.GetTickCount(); count != initialCount {
-					t.Errorf("停止後もティックが発生: count = %d, want %d", count, initialCount)
-				}
+				assert.Equal(t, initialCount, observer.GetTickCount(), "停止後もティックが発生しています")
 			},
 		},
 		{
@@ -46,15 +46,14 @@ func TestIntervalTimer_BasicOperations(t *testing.T) {
 			fn: func(t *testing.T) {
 				timer := NewIntervalTimer(1 * time.Second)
 				observer := NewMockTimeObserver()
+				observer.On("OnTimeTicked").Return()
 				timer.AddObserver(observer)
 
 				timer.Start()
 				timer.UpdateInterval(50 * time.Millisecond)
 
 				// 更新後のインターバルでティックが発生することを確認
-				if !observer.WaitForTick(100 * time.Millisecond) {
-					t.Error("更新後のインターバルでティックが発生しませんでした")
-				}
+				require.True(t, observer.WaitForTick(100*time.Millisecond), "更新後のインターバルでティックが発生しませんでした")
 
 				timer.Stop()
 			},
@@ -73,6 +72,7 @@ func TestIntervalTimer_ObserverNotification(t *testing.T) {
 	observers := make([]*MockTimeObserver, 3)
 	for i := range observers {
 		observers[i] = NewMockTimeObserver()
+		observers[i].On("OnTimeTicked").Return()
 		timer.AddObserver(observers[i])
 	}
 
@@ -81,15 +81,14 @@ func TestIntervalTimer_ObserverNotification(t *testing.T) {
 
 	// すべてのオブザーバーが通知を受け取ることを確認
 	for i, observer := range observers {
-		if !observer.WaitForTick(100 * time.Millisecond) {
-			t.Errorf("Observer %d: ティック通知を受信できませんでした", i)
-		}
+		require.True(t, observer.WaitForTick(100*time.Millisecond), "Observer %d: ティック通知を受信できませんでした", i)
 	}
 }
 
 func TestIntervalTimer_ConcurrentAccess(t *testing.T) {
 	timer := NewIntervalTimer(20 * time.Millisecond)
 	observer := NewMockTimeObserver()
+	observer.On("OnTimeTicked").Return()
 	timer.AddObserver(observer)
 
 	const (
@@ -146,15 +145,14 @@ func TestIntervalTimer_EdgeCases(t *testing.T) {
 			fn: func(t *testing.T) {
 				timer := NewIntervalTimer(50 * time.Millisecond)
 				observer := NewMockTimeObserver()
+				observer.On("OnTimeTicked").Return()
 				timer.AddObserver(observer)
 
 				timer.Start()
 				timer.Start() // 2回目の開始
 
 				// 正常にティックが発生することを確認
-				if !observer.WaitForTick(100 * time.Millisecond) {
-					t.Error("ティックが発生しませんでした")
-				}
+				require.True(t, observer.WaitForTick(100*time.Millisecond), "ティックが発生しませんでした")
 
 				timer.Stop()
 			},
@@ -172,14 +170,13 @@ func TestIntervalTimer_EdgeCases(t *testing.T) {
 			fn: func(t *testing.T) {
 				timer := NewIntervalTimer(1 * time.Microsecond)
 				observer := NewMockTimeObserver()
+				observer.On("OnTimeTicked").Return()
 				timer.AddObserver(observer)
 
 				timer.Start()
 
 				// 短いインターバルでもティックが発生することを確認
-				if !observer.WaitForTick(100 * time.Millisecond) {
-					t.Error("極端に短いインターバルでティックが発生しませんでした")
-				}
+				require.True(t, observer.WaitForTick(100*time.Millisecond), "極端に短いインターバルでティックが発生しませんでした")
 
 				timer.Stop()
 			},
@@ -211,6 +208,9 @@ func TestIntervalTimer_ObserverManagement(t *testing.T) {
 	observer1 := NewMockTimeObserver()
 	observer2 := NewMockTimeObserver()
 
+	observer1.On("OnTimeTicked").Return()
+	observer2.On("OnTimeTicked").Return()
+
 	// オブザーバーの追加
 	timer.AddObserver(observer1)
 	timer.AddObserver(observer2)
@@ -218,9 +218,8 @@ func TestIntervalTimer_ObserverManagement(t *testing.T) {
 	timer.Start()
 
 	// 両方のオブザーバーが通知を受け取ることを確認
-	if !observer1.WaitForTick(100*time.Millisecond) || !observer2.WaitForTick(100*time.Millisecond) {
-		t.Error("いずれかのオブザーバーがティック通知を受信できませんでした")
-	}
+	require.True(t, observer1.WaitForTick(100*time.Millisecond) && observer2.WaitForTick(100*time.Millisecond),
+		"いずれかのオブザーバーがティック通知を受信できませんでした")
 
 	// observer1を削除
 	timer.RemoveObserver(observer1)
@@ -233,14 +232,10 @@ func TestIntervalTimer_ObserverManagement(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// observer1のカウントが変わっていないことを確認
-	if count := observer1.GetTickCount(); count != initialCount1 {
-		t.Errorf("削除されたobserver1がティック通知を受信: count = %d, want %d", count, initialCount1)
-	}
+	assert.Equal(t, initialCount1, observer1.GetTickCount(), "削除されたobserver1がティック通知を受信しています")
 
 	// observer2のカウントが増えていることを確認
-	if count := observer2.GetTickCount(); count <= initialCount2 {
-		t.Error("observer2がティック通知を受信していません")
-	}
+	assert.Greater(t, observer2.GetTickCount(), initialCount2, "observer2がティック通知を受信していません")
 
 	timer.Stop()
 }

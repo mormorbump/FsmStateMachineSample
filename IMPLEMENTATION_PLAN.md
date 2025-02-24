@@ -1,91 +1,110 @@
-# 実装計画
+# Core Domain Test Implementation Plan
 
-## 1. 問題の特定
-現在のNewStateFacade()には以下の問題があります：
-- Phaseの作成時にConditionが適切に初期化されていない
-- ConditionPartの設定が完全に欠落している
-- 各コンポーネント間の関係性が正しく構築されていない
+## テストユーティリティの改善
 
-## 2. 具体的な要件
+### 削除可能な関数（testifyで代替）
+1. AssertStateSequence -> assert.Equal
+2. AssertEventually -> require.Eventually
+3. WaitForCondition -> require.Eventually
 
-### 2.1 時間条件の設定
-- すべてのConditionKindはTime
-- 各Phaseに対して1つのConditionPartを設定
-- 時間設定：
-  * Phase1: 1秒
-  * Phase2: 2秒
-  * Phase3: 3秒
-
-### 2.2 コンポーネントの階層構造
-```
-Phase
-  └── Condition (Kind: Time)
-        └── ConditionPart (ReferenceValueInt: 1-3秒)
-```
-
-## 3. 実装手順
-
-1. ConditionPartの作成
-   - TimeStrategyを使用
-   - ReferenceValueIntに各フェーズの時間を設定
-   - ComparisonOperatorはEQ（等価比較）を使用
-
-2. Conditionの作成
-   - Kind: Time
-   - ConditionTypeはSingle（単一条件）
-   - 各フェーズに対応するConditionPartを設定
-
-3. Phaseの修正
-   - 各フェーズに対応するConditionを設定
-   - ObserverパターンでConditionの状態を監視
-
-4. NewStateFacade()の修正
+### モック実装の簡略化
 ```go
-func NewStateFacade() StateFacade {
-    // Phase1 (1秒)
-    part1 := NewConditionPart(1, "Phase1_Part")
-    part1.ReferenceValueInt = 1
-    cond1 := NewCondition(1, "Phase1_Condition", condition.KindTime)
-    cond1.AddPart(part1)
-    phase1 := NewPhase("PHASE1", 1, cond1)
+type mockStateObserver struct {
+    stateChanges []string
+    mock.Mock
+}
 
-    // Phase2 (2秒)
-    part2 := NewConditionPart(2, "Phase2_Part")
-    part2.ReferenceValueInt = 2
-    cond2 := NewCondition(2, "Phase2_Condition", condition.KindTime)
-    cond2.AddPart(part2)
-    phase2 := NewPhase("PHASE2", 2, cond2)
+func (m *mockStateObserver) OnStateChanged(state string) {
+    m.Called(state)
+    m.stateChanges = append(m.stateChanges, state)
+}
 
-    // Phase3 (3秒)
-    part3 := NewConditionPart(3, "Phase3_Part")
-    part3.ReferenceValueInt = 3
-    cond3 := NewCondition(3, "Phase3_Condition", condition.KindTime)
-    cond3.AddPart(part3)
-    phase3 := NewPhase("PHASE3", 3, cond3)
+type mockTimeObserver struct {
+    mock.Mock
+}
 
-    phases := entity.Phases{phase1, phase2, phase3}
-    controller := NewPhaseController(phases)
+func (m *mockTimeObserver) OnTimeTicked() {
+    m.Called()
+}
+```
 
-    return &stateFacadeImpl{
-        controller: controller,
+## テストケースの実装方針
+
+### 基本方針
+- testifyのassertパッケージを使用
+- テーブル駆動テストを活用
+- 並行処理のテストにはrequire.Eventuallyを使用
+
+### テストケース例
+```go
+func TestSomething(t *testing.T) {
+    tests := []struct {
+        name     string
+        input    string
+        expected string
+    }{
+        {
+            name:     "case 1",
+            input:    "input1",
+            expected: "expected1",
+        },
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            result := someFunction(tt.input)
+            assert.Equal(t, tt.expected, result)
+        })
     }
 }
 ```
 
-## 4. テスト計画
+### 並行処理のテスト例
+```go
+func TestConcurrent(t *testing.T) {
+    require.Eventually(t, func() bool {
+        // テスト条件
+        return true
+    }, time.Second, 10*time.Millisecond, "timeout waiting for condition")
+}
+```
 
-1. ConditionPartのテスト
-   - 時間経過による状態変化の検証
-   - ReferenceValueIntの正しい設定確認
+## 実装順序
 
-2. Conditionのテスト
-   - Time条件の評価検証
-   - 状態遷移の確認
+1. test_utils.goの更新
+   - 不要な関数の削除
+   - モック実装の簡略化
 
-3. Phaseのテスト
-   - 時間経過による遷移の検証
-   - フェーズ間の連携確認
+2. 既存のテストの修正
+   - testifyの使用に合わせてテストを更新
+   - テーブル駆動テストの導入
+   - アサーションの書き換え
 
-4. 統合テスト
-   - 全フェーズの順次実行確認
-   - タイミングの正確性検証
+3. 新規テストの実装
+   - condition_subject_test.go
+   - condition_strategy_test.go
+   - その他必要なテスト
+
+## テスト実行方法
+
+```bash
+# 通常のテスト実行
+go test ./internal/domain/core/... -v
+
+# レースディテクタを有効にしてテスト実行
+go test -race ./internal/domain/core/... -v
+```
+
+## 注意点
+
+1. アサーションの使い分け
+   - assert: 通常のアサーション
+   - require: テストを即座に終了させる必要がある場合
+
+2. モックの使用
+   - testify/mockを活用
+   - 必要最小限のモック実装に留める
+
+3. テストの可読性
+   - テストケース名は意図が明確に分かるように
+   - テーブル駆動テストで類似のケースをまとめる

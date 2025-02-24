@@ -2,52 +2,51 @@ package core
 
 import (
 	"sync"
-	"testing"
 	"time"
+
+	"github.com/stretchr/testify/mock"
 )
 
-// MockStateObserver StateObserver インターフェースのモック実装
-type MockStateObserver struct {
-	mu            sync.Mutex
-	stateChanges  []string
-	onStateChange func(state string)
+// MockConditionObserver ConditionObserver インターフェースのモック実装
+type MockConditionObserver struct {
+	mock.Mock
 }
 
-func NewMockStateObserver() *MockStateObserver {
-	return &MockStateObserver{
-		stateChanges: make([]string, 0),
-	}
+func NewMockConditionObserver() *MockConditionObserver {
+	return &MockConditionObserver{}
 }
 
-func (m *MockStateObserver) OnStateChanged(state string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.stateChanges = append(m.stateChanges, state)
-	if m.onStateChange != nil {
-		m.onStateChange(state)
-	}
+func (m *MockConditionObserver) OnConditionSatisfied(conditionID ConditionID) {
+	m.Called(conditionID)
 }
 
-func (m *MockStateObserver) GetStateChanges() []string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	result := make([]string, len(m.stateChanges))
-	copy(result, m.stateChanges)
-	return result
+func (m *MockConditionObserver) OnStateChanged(state string) {
+	m.Called(state)
 }
 
-func (m *MockStateObserver) SetOnStateChange(f func(state string)) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.onStateChange = f
+// MockConditionPartObserver ConditionPartObserver インターフェースのモック実装
+type MockConditionPartObserver struct {
+	mock.Mock
+}
+
+func NewMockConditionPartObserver() *MockConditionPartObserver {
+	return &MockConditionPartObserver{}
+}
+
+func (m *MockConditionPartObserver) OnPartSatisfied(partID ConditionPartID) {
+	m.Called(partID)
+}
+
+func (m *MockConditionPartObserver) OnStateChanged(state string) {
+	m.Called(state)
 }
 
 // MockTimeObserver TimeObserver インターフェースのモック実装
 type MockTimeObserver struct {
-	mu          sync.Mutex
-	tickCount   int
-	onTimeTick  func()
+	mock.Mock
 	waitForTick chan struct{}
+	tickCount   int
+	mu          sync.Mutex
 }
 
 func NewMockTimeObserver() *MockTimeObserver {
@@ -57,11 +56,9 @@ func NewMockTimeObserver() *MockTimeObserver {
 }
 
 func (m *MockTimeObserver) OnTimeTicked() {
+	m.Called()
 	m.mu.Lock()
 	m.tickCount++
-	if m.onTimeTick != nil {
-		m.onTimeTick()
-	}
 	m.mu.Unlock()
 	select {
 	case m.waitForTick <- struct{}{}:
@@ -75,12 +72,6 @@ func (m *MockTimeObserver) GetTickCount() int {
 	return m.tickCount
 }
 
-func (m *MockTimeObserver) SetOnTimeTick(f func()) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.onTimeTick = f
-}
-
 func (m *MockTimeObserver) WaitForTick(timeout time.Duration) bool {
 	select {
 	case <-m.waitForTick:
@@ -90,53 +81,7 @@ func (m *MockTimeObserver) WaitForTick(timeout time.Duration) bool {
 	}
 }
 
-type TestHelper struct {
-	t *testing.T
-}
-
-func NewTestHelper(t *testing.T) *TestHelper {
-	return &TestHelper{t: t}
-}
-
-// AssertStateSequence 状態遷移のシーケンスが期待通りかを検証
-func (h *TestHelper) AssertStateSequence(got []string, want []string) {
-	h.t.Helper()
-	if len(got) != len(want) {
-		h.t.Errorf("状態遷移回数が異なります。got %d, want %d", len(got), len(want))
-		return
-	}
-	for i, state := range got {
-		if state != want[i] {
-			h.t.Errorf("状態遷移が異なります。index %d: got %s, want %s", i, state, want[i])
-		}
-	}
-}
-
-// AssertEventually 指定された条件が一定時間内に満たされることを検証
-func (h *TestHelper) AssertEventually(condition func() bool, timeout time.Duration, message string) {
-	h.t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if condition() {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	h.t.Errorf("タイムアウト: %s", message)
-}
-
-// WaitForCondition 指定された条件が満たされるまで待機
-func (h *TestHelper) WaitForCondition(condition func() bool, timeout time.Duration) bool {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if condition() {
-			return true
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	return false
-}
-
+// MockTimer タイマーのモック実装
 type MockTimer struct {
 	C       chan time.Time
 	stopped bool
@@ -174,6 +119,7 @@ func (m *MockTimer) Tick() {
 	}
 }
 
+// SafeCounter スレッドセーフなカウンター
 type SafeCounter struct {
 	mu    sync.Mutex
 	count int
