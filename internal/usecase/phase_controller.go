@@ -5,21 +5,21 @@ import (
 	"fmt"
 	"go.uber.org/zap"
 	"state_sample/internal/domain/core"
-	"state_sample/internal/domain/entity"
+	"state_sample/internal/domain/state"
 	logger "state_sample/internal/lib"
 	"sync"
 	"time"
 )
 
 type PhaseController struct {
-	phases                 entity.Phases
-	currentPhase           *entity.Phase
+	phases                 state.Phases
+	currentPhase           *state.Phase
 	*core.StateSubjectImpl // Subject実装
 	mu                     sync.RWMutex
 	log                    *zap.Logger
 }
 
-func NewPhaseController(phases entity.Phases) *PhaseController {
+func NewPhaseController(phases state.Phases) *PhaseController {
 	log := logger.DefaultLogger()
 	if len(phases) <= 0 {
 		log.Error("PhaseController", zap.String("error", "No phases found"))
@@ -48,26 +48,26 @@ func (pc *PhaseController) OnStateChanged(state string) {
 	}
 }
 
-func (pc *PhaseController) GetCurrentPhase() *entity.Phase {
+func (pc *PhaseController) GetCurrentPhase() *state.Phase {
 	pc.mu.RLock()
 	defer pc.mu.RUnlock()
 	return pc.currentPhase
 }
 
-func (pc *PhaseController) SetCurrentPhase(phase *entity.Phase) {
+func (pc *PhaseController) SetCurrentPhase(phase *state.Phase) {
 	pc.mu.Lock()
 	defer pc.mu.Unlock()
 
-	oldPhase := ""
+	oldPhaseName := ""
 	if pc.currentPhase != nil {
-		oldPhase = pc.currentPhase.Type
+		oldPhaseName = pc.currentPhase.Name
 	}
 
 	pc.currentPhase = phase
-	pc.log.Debug("PhaseController", zap.String("old phase", oldPhase), zap.String("new phase", phase.Type))
+	pc.log.Debug("PhaseController", zap.String("old phase", oldPhaseName), zap.String("new phase", phase.Name))
 }
 
-func (pc *PhaseController) GetPhases() entity.Phases {
+func (pc *PhaseController) GetPhases() state.Phases {
 	pc.mu.RLock()
 	defer pc.mu.RUnlock()
 	return pc.phases
@@ -105,7 +105,7 @@ func (pc *PhaseController) Reset(ctx context.Context) error {
 	}
 
 	pc.SetCurrentPhase(pc.phases[0])
-	pc.log.Debug("PhaseController.Reset", zap.String("phase type", pc.phases[0].Type))
+	pc.log.Debug("PhaseController.Reset", zap.String("phase name", pc.phases[0].Name))
 
 	return nil
 }

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"state_sample/internal/domain/core"
-	"state_sample/internal/domain/entity"
+	"state_sample/internal/domain/state"
 	logger "state_sample/internal/lib"
 	"state_sample/internal/usecase"
 	"sync"
@@ -27,19 +27,19 @@ type ConditionInfo struct {
 
 // ConditionPartInfo は条件パーツの状態情報を表す構造体です
 type ConditionPartInfo struct {
-	ID                   core.ConditionPartID      `json:"id"`
-	Label                string                    `json:"label"`
-	State                string                    `json:"state"`
-	ComparisonOperator   entity.ComparisonOperator `json:"comparison_operator"`
-	IsClear              bool                      `json:"is_clear"`
-	TargetEntityType     string                    `json:"target_entity_type"`
-	TargetEntityID       int64                     `json:"target_entity_id"`
-	ReferenceValueInt    int64                     `json:"reference_value_int"`
-	ReferenceValueFloat  float64                   `json:"reference_value_float"`
-	ReferenceValueString string                    `json:"reference_value_string"`
-	MinValue             float64                   `json:"min_value"`
-	MaxValue             float64                   `json:"max_value"`
-	Priority             int32                     `json:"priority"`
+	ID                   core.ConditionPartID     `json:"id"`
+	Label                string                   `json:"label"`
+	State                string                   `json:"state"`
+	ComparisonOperator   state.ComparisonOperator `json:"comparison_operator"`
+	IsClear              bool                     `json:"is_clear"`
+	TargetEntityType     string                   `json:"target_entity_type"`
+	TargetEntityID       int64                    `json:"target_entity_id"`
+	ReferenceValueInt    int64                    `json:"reference_value_int"`
+	ReferenceValueFloat  float64                  `json:"reference_value_float"`
+	ReferenceValueString string                   `json:"reference_value_string"`
+	MinValue             float64                  `json:"min_value"`
+	MaxValue             float64                  `json:"max_value"`
+	Priority             int32                    `json:"priority"`
 }
 
 type StateServer struct {
@@ -119,7 +119,7 @@ func (s *StateServer) OnStateChanged(state string) {
 		Type:       "state_change",
 		State:      state,
 		Info:       stateInfo,
-		Phase:      currentPhase.Type,
+		Phase:      currentPhase.Name,
 		Message:    fmt.Sprintf("order: %v, message: %v", currentPhase.Order, stateInfo.Message),
 		Conditions: conditions,
 	}

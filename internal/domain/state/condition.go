@@ -1,4 +1,4 @@
-package entity
+package state
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"state_sample/internal/domain/value"
 	logger "state_sample/internal/lib"
 	"sync"
+	"time"
 
 	"github.com/looplab/fsm"
 	"go.uber.org/zap"
@@ -19,8 +20,11 @@ type Condition struct {
 	Label                      string
 	Kind                       core.ConditionKind
 	Parts                      map[core.ConditionPartID]*ConditionPart
+	Name                       string
 	Description                string
 	IsClear                    bool
+	StartTime                  *time.Time
+	FinishTime                 *time.Time
 	fsm                        *fsm.FSM
 	*core.StateSubjectImpl     // Subject実装
 	*core.ConditionSubjectImpl // Condition Subject実装
@@ -42,11 +46,19 @@ func NewCondition(id core.ConditionID, label string, kind core.ConditionKind) *C
 		ConditionSubjectImpl: core.NewConditionSubjectImpl(),
 		satisfiedParts:       make(map[core.ConditionPartID]bool),
 		IsClear:              false,
+		StartTime:            nil,
+		FinishTime:           nil,
 		log:                  log,
 	}
 
 	callbacks := fsm.Callbacks{
 		"enter_" + value.StateUnsatisfied: func(ctx context.Context, e *fsm.Event) {
+			now := time.Now()
+			c.StartTime = &now
+			c.log.Debug("Condition enter_unsatisfied: setting start time",
+				zap.Time("start_time", now),
+				zap.Int64("condition_id", int64(c.ID)))
+
 			for i, part := range c.Parts {
 				c.log.Debug("Condition enter_unsatisfied: activating part",
 					zap.Any("condition_part", part),
@@ -57,12 +69,23 @@ func NewCondition(id core.ConditionID, label string, kind core.ConditionKind) *C
 			}
 		},
 		"enter_" + value.StateSatisfied: func(ctx context.Context, e *fsm.Event) {
+			now := time.Now()
+			c.FinishTime = &now
+			c.log.Debug("Condition enter_satisfied: setting finish time",
+				zap.Time("finish_time", now),
+				zap.Int64("condition_id", int64(c.ID)))
+
 			c.IsClear = true
 			c.NotifyConditionSatisfied(c.ID)
 		},
 		"enter_" + value.StateReady: func(ctx context.Context, e *fsm.Event) {
 			c.IsClear = false
+			c.StartTime = nil
+			c.FinishTime = nil
 			c.satisfiedParts = make(map[core.ConditionPartID]bool)
+
+			c.log.Debug("Condition enter_ready: resetting time information",
+				zap.Int64("condition_id", int64(c.ID)))
 		},
 		"after_event": func(ctx context.Context, e *fsm.Event) {
 			c.log.Debug("Condition info",
@@ -145,6 +168,30 @@ func (c *Condition) Revert(ctx context.Context) error {
 }
 
 func (c *Condition) Reset(ctx context.Context) error {
+	// ログ出力用の時間情報を準備
+	var startTimeStr, finishTimeStr string
+	if c.StartTime != nil {
+		startTimeStr = c.StartTime.Format(time.RFC3339)
+	} else {
+		startTimeStr = "not set"
+	}
+	if c.FinishTime != nil {
+		finishTimeStr = c.FinishTime.Format(time.RFC3339)
+	} else {
+		finishTimeStr = "not set"
+	}
+
+	c.log.Debug("Condition.Reset: Resetting time information",
+		zap.String("start_time", startTimeStr),
+		zap.String("finish_time", finishTimeStr),
+		zap.Int64("condition_id", int64(c.ID)),
+		zap.String("label", c.Label))
+
+	// 時間情報をリセット
+	c.StartTime = nil
+	c.FinishTime = nil
+
+	// パーツをリセット
 	for i, part := range c.Parts {
 		if err := part.Reset(ctx); err != nil {
 			return fmt.Errorf("failed to reset part %d: %w", i, err)

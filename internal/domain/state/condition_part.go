@@ -1,4 +1,4 @@
-package entity
+package state
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"state_sample/internal/domain/value"
 	logger "state_sample/internal/lib"
 	"sync"
+	"time"
 
 	"github.com/looplab/fsm"
 	"go.uber.org/zap"
@@ -15,22 +16,20 @@ import (
 
 // ConditionPart は条件の部分的な評価を表す構造体です
 type ConditionPart struct {
-	ID                 core.ConditionPartID
-	Label              string
-	ComparisonOperator ComparisonOperator
-	IsClear            bool
-	TargetEntityType   string
-	TargetEntityID     int64
-
-	ReferenceValueInt    int64
-	ReferenceValueFloat  float64
-	ReferenceValueString string
-
-	MinValue float64
-	MaxValue float64
-
-	Priority int32
-
+	ID                     core.ConditionPartID
+	Label                  string
+	ComparisonOperator     ComparisonOperator
+	IsClear                bool
+	TargetEntityType       string
+	TargetEntityID         int64
+	ReferenceValueInt      int64
+	ReferenceValueFloat    float64
+	ReferenceValueString   string
+	MinValue               float64
+	MaxValue               float64
+	Priority               int32
+	StartTime              *time.Time
+	FinishTime             *time.Time
 	fsm                    *fsm.FSM
 	*core.StateSubjectImpl // Subject実装
 	*core.ConditionPartSubjectImpl
@@ -65,13 +64,18 @@ func NewConditionPart(id core.ConditionPartID, label string) *ConditionPart {
 		StateSubjectImpl:         core.NewStateSubjectImpl(),
 		ConditionPartSubjectImpl: core.NewConditionPartSubjectImpl(),
 		IsClear:                  false,
+		StartTime:                nil,
+		FinishTime:               nil,
 		log:                      log,
 	}
 
 	callbacks := fsm.Callbacks{
 		"enter_" + value.StateUnsatisfied: func(ctx context.Context, e *fsm.Event) {
+			now := time.Now()
+			p.StartTime = &now
 			log.Debug("ConditionPart enter_unsatisfied",
 				zap.Int64("id", int64(p.ID)),
+				zap.Time("start_time", now),
 			)
 			if p.strategy != nil {
 				if err := p.strategy.Evaluate(ctx, p); err != nil {
@@ -81,9 +85,12 @@ func NewConditionPart(id core.ConditionPartID, label string) *ConditionPart {
 		},
 		"enter_" + value.StateProcessing: func(ctx context.Context, e *fsm.Event) {},
 		"enter_" + value.StateSatisfied: func(ctx context.Context, e *fsm.Event) {
+			now := time.Now()
+			p.FinishTime = &now
 			p.IsClear = true
 			p.log.Debug("part satisfied",
 				zap.Bool("IsClear", p.IsClear),
+				zap.Time("finish_time", now),
 			)
 			if p.strategy != nil {
 				if err := p.strategy.Cleanup(); err != nil {
@@ -94,6 +101,10 @@ func NewConditionPart(id core.ConditionPartID, label string) *ConditionPart {
 		},
 		"enter_" + value.StateReady: func(ctx context.Context, e *fsm.Event) {
 			p.IsClear = false
+			p.StartTime = nil
+			p.FinishTime = nil
+			p.log.Debug("ConditionPart enter_ready: resetting time information",
+				zap.Int64("id", int64(p.ID)))
 		},
 		"after_event": func(ctx context.Context, e *fsm.Event) {
 			p.log.Debug("ConditionPart Info",
@@ -175,6 +186,29 @@ func (p *ConditionPart) Revert(ctx context.Context) error {
 func (p *ConditionPart) Reset(ctx context.Context) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	// ログ出力用の時間情報を準備
+	var startTimeStr, finishTimeStr string
+	if p.StartTime != nil {
+		startTimeStr = p.StartTime.Format(time.RFC3339)
+	} else {
+		startTimeStr = "not set"
+	}
+	if p.FinishTime != nil {
+		finishTimeStr = p.FinishTime.Format(time.RFC3339)
+	} else {
+		finishTimeStr = "not set"
+	}
+
+	p.log.Debug("ConditionPart.Reset: Resetting time information",
+		zap.String("start_time", startTimeStr),
+		zap.String("finish_time", finishTimeStr),
+		zap.Int64("id", int64(p.ID)),
+		zap.String("label", p.Label))
+
+	// 時間情報をリセット
+	p.StartTime = nil
+	p.FinishTime = nil
 
 	if p.strategy != nil {
 		if err := p.strategy.Cleanup(); err != nil {

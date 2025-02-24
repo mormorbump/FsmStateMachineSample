@@ -1,4 +1,4 @@
-package entity
+package state
 
 import (
 	"context"
@@ -149,4 +149,49 @@ func (m *mockConditionPartObserver) OnPartSatisfied(partID core.ConditionPartID)
 
 func (m *mockConditionPartObserver) OnStateChanged(state string) {
 	m.stateChanges = append(m.stateChanges, state)
+}
+
+func TestConditionPart_TimeManagement(t *testing.T) {
+	// Arrange
+	part := NewConditionPart(1, "test_part")
+	ctx := context.Background()
+
+	// 初期状態の確認
+	assert.Nil(t, part.StartTime, "初期状態ではStartTimeはnilのはず")
+	assert.Nil(t, part.FinishTime, "初期状態ではFinishTimeはnilのはず")
+
+	// StateUnsatisfied遷移時のStartTime設定を確認
+	err := part.Activate(ctx)
+	assert.NoError(t, err)
+	assert.NotNil(t, part.StartTime, "StateUnsatisfied遷移後はStartTimeが設定されているはず")
+	assert.Nil(t, part.FinishTime, "StateUnsatisfied遷移後もFinishTimeはnilのはず")
+	activateTime := *part.StartTime
+
+	// Processing状態への遷移
+	err = part.StartProcess(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, activateTime, *part.StartTime, "Processing遷移後もStartTimeは変更されないはず")
+	assert.Nil(t, part.FinishTime, "Processing遷移後もFinishTimeはnilのはず")
+
+	// Complete経由でのStateSatisfied遷移時のFinishTime設定を確認
+	err = part.Complete(ctx)
+	assert.NoError(t, err)
+	assert.NotNil(t, part.FinishTime, "Complete後はFinishTimeが設定されているはず")
+	assert.Equal(t, activateTime, *part.StartTime, "Complete後もStartTimeは変更されないはず")
+
+	// Reset時の時間情報初期化を確認
+	err = part.Reset(ctx)
+	assert.NoError(t, err)
+	assert.Nil(t, part.StartTime, "Reset後はStartTimeがnilになるはず")
+	assert.Nil(t, part.FinishTime, "Reset後はFinishTimeがnilになるはず")
+
+	// Timeout経由でのStateSatisfied遷移時のFinishTime設定を確認
+	err = part.Activate(ctx)
+	assert.NoError(t, err)
+	activateTime = *part.StartTime
+
+	err = part.Timeout(ctx)
+	assert.NoError(t, err)
+	assert.NotNil(t, part.FinishTime, "Timeout後はFinishTimeが設定されているはず")
+	assert.Equal(t, activateTime, *part.StartTime, "Timeout後もStartTimeは変更されないはず")
 }

@@ -1,4 +1,4 @@
-package entity
+package state
 
 import (
 	"context"
@@ -70,16 +70,16 @@ func TestPhase_ConditionTypeAnd(t *testing.T) {
 
 func TestPhase_NewPhase(t *testing.T) {
 	// Arrange
-	phaseType := "test_phase"
+	name := "test_phase"
 	order := 1
 	cond := createCondition(order, 1)
 
 	// Act
-	phase := NewPhase(phaseType, order, []*Condition{cond})
+	phase := NewPhase(name, order, []*Condition{cond})
 
 	// Assert
 	assert.NotNil(t, phase)
-	assert.Equal(t, phaseType, phase.Type)
+	assert.Equal(t, name, phase.Name)
 	assert.Equal(t, order, phase.Order)
 	assert.Equal(t, core.StateReady, phase.CurrentState())
 	assert.Equal(t, ConditionTypeSingle, phase.ConditionType)
@@ -179,7 +179,7 @@ func TestPhases_ProcessAndActivateByNextOrder(t *testing.T) {
 	// 最初のフェーズを開始
 	nextPhase, err := phases.ProcessAndActivateByNextOrder(ctx)
 	assert.NoError(t, err)
-	assert.Equal(t, "phase1", nextPhase.Type)
+	assert.Equal(t, "phase1", nextPhase.Name)
 	assert.Equal(t, core.StateActive, nextPhase.CurrentState())
 
 	// 次のフェーズに移行
@@ -188,7 +188,7 @@ func TestPhases_ProcessAndActivateByNextOrder(t *testing.T) {
 
 	nextPhase, err = phases.ProcessAndActivateByNextOrder(ctx)
 	assert.NoError(t, err)
-	assert.Equal(t, "phase2", nextPhase.Type)
+	assert.Equal(t, "phase2", nextPhase.Name)
 	assert.Equal(t, core.StateActive, nextPhase.CurrentState())
 }
 
@@ -316,6 +316,41 @@ func TestPhase_ConcurrentConditionSatisfaction(t *testing.T) {
 	assert.True(t, phase.IsClear)
 }
 
+func TestPhase_TimeManagement(t *testing.T) {
+	// Arrange
+	phase := NewPhase("test_phase", 1, []*Condition{createCondition(1, 1)})
+	ctx := context.Background()
+
+	// 初期状態の確認
+	assert.Nil(t, phase.StartTime, "初期状態ではStartTimeはnilのはず")
+	assert.Nil(t, phase.FinishTime, "初期状態ではFinishTimeはnilのはず")
+
+	// Activate時のStartTime設定を確認
+	err := phase.Activate(ctx)
+	assert.NoError(t, err)
+	assert.NotNil(t, phase.StartTime, "Activate後はStartTimeが設定されているはず")
+	assert.Nil(t, phase.FinishTime, "Activate後もFinishTimeはnilのはず")
+	activateTime := *phase.StartTime
+
+	// Next状態への遷移
+	err = phase.Next(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, activateTime, *phase.StartTime, "Next後もStartTimeは変更されないはず")
+	assert.Nil(t, phase.FinishTime, "Next後もFinishTimeはnilのはず")
+
+	// Finish時のFinishTime設定を確認
+	err = phase.Finish(ctx)
+	assert.NoError(t, err)
+	assert.NotNil(t, phase.FinishTime, "Finish後はFinishTimeが設定されているはず")
+	assert.Equal(t, activateTime, *phase.StartTime, "Finish後もStartTimeは変更されないはず")
+
+	// Reset時の時間情報初期化を確認
+	err = phase.Reset(ctx)
+	assert.NoError(t, err)
+	assert.Nil(t, phase.StartTime, "Reset後はStartTimeがnilになるはず")
+	assert.Nil(t, phase.FinishTime, "Reset後はFinishTimeがnilになるはず")
+}
+
 func TestPhases_LastPhase(t *testing.T) {
 	// Arrange
 	phases := Phases{
@@ -327,14 +362,14 @@ func TestPhases_LastPhase(t *testing.T) {
 	// 最初のフェーズを開始して完了
 	nextPhase, err := phases.ProcessAndActivateByNextOrder(ctx)
 	assert.NoError(t, err)
-	assert.Equal(t, "phase1", nextPhase.Type)
+	assert.Equal(t, "phase1", nextPhase.Name)
 	nextPhase.OnConditionSatisfied(core.ConditionID(1))
 	time.Sleep(100 * time.Millisecond)
 
 	// 2番目のフェーズを開始して完了
 	nextPhase, err = phases.ProcessAndActivateByNextOrder(ctx)
 	assert.NoError(t, err)
-	assert.Equal(t, "phase2", nextPhase.Type)
+	assert.Equal(t, "phase2", nextPhase.Name)
 	nextPhase.OnConditionSatisfied(core.ConditionID(2))
 	time.Sleep(100 * time.Millisecond)
 
