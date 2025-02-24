@@ -28,7 +28,7 @@ h1 {
 
 .current-state {
     text-align: center;
-    margin-bottom: 30px;
+    margin-bottom: 5px;
 }
 
 .state-display {
@@ -272,4 +272,113 @@ h1 {
         font-size: 14px;
         padding: 8px 16px;
     }
+
+    .conditions-container {
+        padding: 10px;
+    }
+
+    .condition-item {
+        padding: 10px;
+    }
+
+    .part-item {
+        padding: 6px;
+        font-size: 12px;
+    }
+}
+
+/* 条件表示のスタイル */
+.conditions-container {
+    /* margin-top: 30px; */
+    padding: 20px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.conditions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.condition-item {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.condition-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.condition-label {
+    font-weight: bold;
+    color: #333;
+}
+
+.condition-state {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.parts-list {
+    margin-left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.part-item {
+    padding: 12px;
+    background-color: white;
+    border-radius: 4px;
+    border: 1px solid #dee2e6;
+}
+
+.part-info {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.part-basic {
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.part-basic strong {
+    color: #495057;
+}
+
+.part-details {
+    font-size: 0.9em;
+    color: #6c757d;
+    line-height: 1.5;
+}
+
+/* 状態に応じた色 */
+.state-ready {
+    background-color: #e9ecef;
+    color: #495057;
+}
+
+.state-unsatisfied {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.state-processing {
+    background-color: #cfe2ff;
+    color: #084298;
+}
+
+.state-satisfied {
+    background-color: #d1e7dd;
+    color: #0f5132;
 }

@@ -1,110 +1,76 @@
-# Core Domain Test Implementation Plan
+# 状態表示機能の拡張計画
 
-## テストユーティリティの改善
+## 概要
+現在のUIをPhase、Condition、ConditionPartの状態を全て表示できるように拡張する。
 
-### 削除可能な関数（testifyで代替）
-1. AssertStateSequence -> assert.Equal
-2. AssertEventually -> require.Eventually
-3. WaitForCondition -> require.Eventually
+## 実装手順
 
-### モック実装の簡略化
+### 1. サーバーサイドの拡張
+
+#### 1.1 状態情報構造体の拡張
 ```go
-type mockStateObserver struct {
-    stateChanges []string
-    mock.Mock
+type StateUpdate struct {
+    Type    string              `json:"type"`
+    State   string              `json:"state"`
+    Info    *core.GameStateInfo `json:"info,omitempty"`
+    Phase   string              `json:"phase"`
+    Message string              `json:"message,omitempty"`
+    // 追加する情報
+    Conditions []ConditionInfo `json:"conditions,omitempty"`
 }
 
-func (m *mockStateObserver) OnStateChanged(state string) {
-    m.Called(state)
-    m.stateChanges = append(m.stateChanges, state)
+type ConditionInfo struct {
+    ID    string `json:"id"`
+    State string `json:"state"`
+    Parts []ConditionPartInfo `json:"parts"`
 }
 
-type mockTimeObserver struct {
-    mock.Mock
-}
-
-func (m *mockTimeObserver) OnTimeTicked() {
-    m.Called()
-}
-```
-
-## テストケースの実装方針
-
-### 基本方針
-- testifyのassertパッケージを使用
-- テーブル駆動テストを活用
-- 並行処理のテストにはrequire.Eventuallyを使用
-
-### テストケース例
-```go
-func TestSomething(t *testing.T) {
-    tests := []struct {
-        name     string
-        input    string
-        expected string
-    }{
-        {
-            name:     "case 1",
-            input:    "input1",
-            expected: "expected1",
-        },
-    }
-
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            result := someFunction(tt.input)
-            assert.Equal(t, tt.expected, result)
-        })
-    }
+type ConditionPartInfo struct {
+    ID    string `json:"id"`
+    State string `json:"state"`
 }
 ```
 
-### 並行処理のテスト例
-```go
-func TestConcurrent(t *testing.T) {
-    require.Eventually(t, func() bool {
-        // テスト条件
-        return true
-    }, time.Second, 10*time.Millisecond, "timeout waiting for condition")
-}
-```
+#### 1.2 OnStateChangedメソッドの拡張
+- CurrentPhaseからConditionとConditionPartの情報を取得
+- 新しい構造体に情報を格納してクライアントに送信
 
-## 実装順序
+### 2. クライアントサイドの拡張
 
-1. test_utils.goの更新
-   - 不要な関数の削除
-   - モック実装の簡略化
+#### 2.1 HTMLの拡張
+- Condition状態表示セクションの追加
+- ConditionPart状態表示セクションの追加
+- 階層構造を視覚的に表現するレイアウトの実装
 
-2. 既存のテストの修正
-   - testifyの使用に合わせてテストを更新
-   - テーブル駆動テストの導入
-   - アサーションの書き換え
+#### 2.2 CSSの拡張
+- 新しいセクションのスタイル定義
+- 状態に応じた視覚的フィードバック
+- レスポンシブデザインの対応
 
-3. 新規テストの実装
-   - condition_subject_test.go
-   - condition_strategy_test.go
-   - その他必要なテスト
+#### 2.3 JavaScriptの拡張
+- 状態更新処理の拡張
+- Condition/ConditionPart状態の表示処理追加
+- 状態変更時のアニメーション実装
 
-## テスト実行方法
+## 実装の流れ
 
-```bash
-# 通常のテスト実行
-go test ./internal/domain/core/... -v
+1. サーバーサイドの実装
+   - 新しい構造体の追加
+   - OnStateChangedメソッドの拡張
+   - テストの追加
 
-# レースディテクタを有効にしてテスト実行
-go test -race ./internal/domain/core/... -v
-```
+2. クライアントサイドの実装
+   - HTML構造の更新
+   - CSS定義の追加
+   - JavaScript処理の拡張
 
-## 注意点
+3. テストと動作確認
+   - 各状態遷移時の表示確認
+   - エラーケースの確認
+   - パフォーマンスの確認
 
-1. アサーションの使い分け
-   - assert: 通常のアサーション
-   - require: テストを即座に終了させる必要がある場合
+## 期待される結果
 
-2. モックの使用
-   - testify/mockを活用
-   - 必要最小限のモック実装に留める
-
-3. テストの可読性
-   - テストケース名は意図が明確に分かるように
-   - テーブル駆動テストで類似のケースをまとめる
+- Phase、Condition、ConditionPartの状態が一目で確認可能
+- 状態変更がリアルタイムに反映
+- 直感的なUI/UXの提供

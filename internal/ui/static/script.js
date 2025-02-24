@@ -156,7 +156,8 @@ class StateManager {
         console.log('新しい状態:', {
             state: data.state,
             phase: data.phase,
-            nextTransition: data.next_transition
+            nextTransition: data.next_transition,
+            conditions: data.conditions
         });
 
         this.updateState(data);
@@ -165,6 +166,79 @@ class StateManager {
             console.log('状態メッセージ:', data.message);
             this.updateStateMessage(data.message);
         }
+        this.updateConditions(data.conditions);
+    }
+
+    updateConditions(conditions) {
+        console.log('条件更新:', conditions);
+        const conditionsList = document.getElementById('conditions-list');
+        conditionsList.innerHTML = '';
+
+        conditions.forEach(condition => {
+            const conditionElement = document.createElement('div');
+            conditionElement.className = 'condition-item';
+            
+            const header = document.createElement('div');
+            header.className = 'condition-header';
+            
+            const label = document.createElement('div');
+            label.className = 'condition-label';
+            label.textContent = `${condition.label} (Kind: ${condition.kind}, Clear: ${condition.is_clear})`;
+            
+            const state = document.createElement('div');
+            state.className = `condition-state state-${condition.state}`;
+            state.textContent = condition.state;
+            
+            const description = document.createElement('div');
+            description.className = 'condition-description';
+            description.textContent = condition.description || 'No description';
+            
+            header.appendChild(label);
+            header.appendChild(state);
+            conditionElement.appendChild(header);
+            conditionElement.appendChild(description);
+
+            if (condition.parts && condition.parts.length > 0) {
+                const partsList = document.createElement('div');
+                partsList.className = 'parts-list';
+                
+                condition.parts.forEach(part => {
+                    const partElement = document.createElement('div');
+                    partElement.className = 'part-item';
+                    
+                    const partInfo = document.createElement('div');
+                    partInfo.className = 'part-info';
+                    
+                    const partBasic = document.createElement('div');
+                    partBasic.className = 'part-basic';
+                    partBasic.innerHTML = `
+                        <strong>${part.label}</strong> (Clear: ${part.is_clear})<br>
+                        State: <span class="state-${part.state}">${part.state}</span><br>
+                        Operator: ${part.comparison_operator}
+                    `;
+                    
+                    const partDetails = document.createElement('div');
+                    partDetails.className = 'part-details';
+                    partDetails.innerHTML = `
+                        Target: ${part.target_entity_type} (ID: ${part.target_entity_id})<br>
+                        Values: Int=${part.reference_value_int},
+                               Float=${part.reference_value_float},
+                               String="${part.reference_value_string}"<br>
+                        Range: ${part.min_value} - ${part.max_value}<br>
+                        Priority: ${part.priority}
+                    `;
+                    
+                    partInfo.appendChild(partBasic);
+                    partInfo.appendChild(partDetails);
+                    partElement.appendChild(partInfo);
+                    partsList.appendChild(partElement);
+                });
+                
+                conditionElement.appendChild(partsList);
+            }
+
+            conditionsList.appendChild(conditionElement);
+        });
     }
 
     updateState(data) {

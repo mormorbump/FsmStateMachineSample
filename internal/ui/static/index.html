@@ -16,41 +16,48 @@
                 <div id="current-state" class="state-display">ready</div>
             </div>
 
+            <div class="conditions-container">
+                <h2>条件の状態</h2>
+                <div id="conditions-list" class="conditions-list">
+                    <!-- 条件リストがここに動的に追加されます -->
+                </div>
+            </div>
+
             <div class="state-diagram">
-                <svg id="state-svg" viewBox="0 0 800 400">
+                <svg id="state-svg" viewBox="0 0 800 200">
                     <!-- 状態を表す円 -->
                     <g id="states">
                         <g class="state" data-state="ready">
-                            <circle cx="100" cy="200" r="40" />
-                            <text x="100" y="200">Ready</text>
+                            <circle cx="100" cy="100" r="30" />
+                            <text x="100" y="100">Ready</text>
                         </g>
                         <g class="state" data-state="active">
-                            <circle cx="300" cy="200" r="40" />
-                            <text x="300" y="200">Active</text>
+                            <circle cx="300" cy="100" r="30" />
+                            <text x="300" y="100">Active</text>
                         </g>
                         <g class="state" data-state="next">
-                            <circle cx="500" cy="200" r="40" />
-                            <text x="500" y="200">Next</text>
+                            <circle cx="500" cy="100" r="30" />
+                            <text x="500" y="100">Next</text>
                         </g>
                         <g class="state" data-state="finish">
-                            <circle cx="700" cy="200" r="40" />
-                            <text x="700" y="200">Finish</text>
+                            <circle cx="700" cy="100" r="30" />
+                            <text x="700" y="100">Finish</text>
                         </g>
                     </g>
 
                     <!-- 遷移を表す矢印 -->
                     <g id="transitions">
                         <g class="transition" data-event="activate">
-                            <path d="M140,200 L260,200" />
-                            <text x="200" y="180">activate</text>
+                            <path d="M140,100 L260,100" />
+                            <text x="200" y="80">activate</text>
                         </g>
                         <g class="transition" data-event="next">
-                            <path d="M340,200 L460,200" />
-                            <text x="400" y="180">next</text>
+                            <path d="M340,100 L460,100" />
+                            <text x="400" y="80">next</text>
                         </g>
                         <g class="transition" data-event="finish">
-                            <path d="M540,200 L660,200" />
-                            <text x="600" y="180">finish</text>
+                            <path d="M540,100 L660,100" />
+                            <text x="600" y="80">finish</text>
                         </g>
                     </g>
                 </svg>
