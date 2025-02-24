@@ -34,21 +34,21 @@ func TestConditionPart_Validate(t *testing.T) {
 		{
 			name: "valid part",
 			part: &ConditionPart{
-				ComparisonOperator: ComparisonOperatorEQ,
+				ComparisonOperator: core.ComparisonOperatorEQ,
 			},
 			wantErr: false,
 		},
 		{
 			name: "unspecified operator",
 			part: &ConditionPart{
-				ComparisonOperator: ComparisonOperatorUnspecified,
+				ComparisonOperator: core.ComparisonOperatorUnspecified,
 			},
 			wantErr: true,
 		},
 		{
 			name: "invalid between values",
 			part: &ConditionPart{
-				ComparisonOperator: ComparisonOperatorBetween,
+				ComparisonOperator: core.ComparisonOperatorBetween,
 				MinValue:           10,
 				MaxValue:           5,
 			},
@@ -78,7 +78,7 @@ func TestConditionPart_IsClear(t *testing.T) {
 
 	// Act: transition to satisfied state
 	_ = part.Activate(ctx)
-	_ = part.StartProcess(ctx)
+	_ = part.Process(ctx)
 	_ = part.Timeout(ctx) // タイムアウトで直接Satisfiedに遷移
 
 	// Assert: IsClear should be true after satisfied
@@ -97,7 +97,7 @@ func TestConditionPart_StateTransitions(t *testing.T) {
 	assert.Equal(t, value.StateUnsatisfied, part.CurrentState())
 
 	// Unsatisfied → Processing
-	err = part.StartProcess(ctx)
+	err = part.Process(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, value.StateProcessing, part.CurrentState())
 
@@ -129,7 +129,7 @@ func TestConditionPart_ObserverNotification(t *testing.T) {
 
 	// Act: 状態遷移シーケンス
 	_ = part.Activate(ctx)
-	_ = part.StartProcess(ctx)
+	_ = part.Process(ctx)
 	_ = part.Timeout(ctx) // タイムアウトで直接Satisfiedに遷移
 
 	// Assert
@@ -168,7 +168,7 @@ func TestConditionPart_TimeManagement(t *testing.T) {
 	activateTime := *part.StartTime
 
 	// Processing状態への遷移
-	err = part.StartProcess(ctx)
+	err = part.Process(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, activateTime, *part.StartTime, "Processing遷移後もStartTimeは変更されないはず")
 	assert.Nil(t, part.FinishTime, "Processing遷移後もFinishTimeはnilのはず")

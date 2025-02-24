@@ -22,7 +22,7 @@ type stateFacadeImpl struct {
 
 func NewStateFacade() StateFacade {
 	log := logger.DefaultLogger()
-	factory := core.NewDefaultConditionStrategyFactory()
+	factory := state.NewDefaultConditionStrategyFactory()
 	// Phase1 (1秒)
 	part1 := state.NewConditionPart(1, "Phase1_Part")
 	part1.ReferenceValueInt = 1

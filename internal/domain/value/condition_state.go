@@ -10,10 +10,10 @@ const (
 
 // イベント定義
 const (
-	EventActivate     = "activate"      // 有効化
-	EventStartProcess = "start_process" // 処理開始
-	EventComplete     = "complete"      // 条件達成で完了
-	EventTimeout      = "timeout"       // (時間系の)条件達成で完了
-	EventRevert       = "revert"        // 条件未達で差し戻し
-	EventReset        = "reset"         // 状態リセット
+	EventActivate = "activate" // 有効化
+	EventProcess  = "process"  // 処理開始
+	EventComplete = "complete" // 条件達成で完了
+	EventTimeout  = "timeout"  // (時間系の)条件達成で完了
+	EventRevert   = "revert"   // 条件未達で差し戻し
+	EventReset    = "reset"    // 状態リセット
 )

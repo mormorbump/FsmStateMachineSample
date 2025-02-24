@@ -1,125 +1,162 @@
-# 状態管理機能の拡張計画
+# カウンター条件実装計画
 
-## 1. エンティティの拡張
+## 1. カウンター戦略の実装
 
-### 1.1 Phase
+### 1.1 ConditionCounterStrategy構造体
 ```go
-type Phase struct {
-    ID          PhaseID
-    Name        string
-    Description string
-    Rule        GameRule
-    StartTime   *time.Time
-    FinishTime  *time.Time
-    // 他のフィールド...
+type ConditionCounterStrategy struct {
+    currentValue int64
+    observers   []core.ConditionPart
 }
 ```
 
-#### 変更点
-- `enter_active`でStartTimeを設定
-- `enter_finish`でFinishTimeを設定
-- Reset時に両方を初期化
-
-### 1.2 Condition
+### 1.2 インターフェース実装
 ```go
-type Condition struct {
-    Name        string
-    Description string
-    StartTime   *time.Time
-    FinishTime  *time.Time
-    // 他のフィールド...
+// PartStrategyインターフェースを実装
+type PartStrategy interface {
+    Initialize(part ConditionPart) error
+    Evaluate(ctx context.Context, part ConditionPart, params map[string]interface{}) error
+    Cleanup() error
 }
-```
 
-#### 変更点
-- `enter_unsatisfied`でStartTimeを設定
-- `enter_satisfied`でFinishTimeを設定
-- Reset時に両方を初期化
-
-### 1.3 ConditionPart
-```go
-type ConditionPart struct {
-    StartTime   *time.Time
-    FinishTime  *time.Time
-    // 他のフィールド...
+// ConditionCounterStrategyの実装
+func (s *ConditionCounterStrategy) Initialize(part core.ConditionPart) error {
+    s.currentValue = 0
+    return nil
 }
-```
 
-#### 変更点
-- `enter_unsatisfied`でStartTimeを設定
-- `enter_satisfied`でFinishTimeを設定
-- Reset時に両方を初期化
-
-## 2. state_facade.goの修正
-
-### 2.1 Phase生成時の初期化
-```go
-func NewPhase(...) *Phase {
-    return &Phase{
-        ID:          id,
-        Name:        name,
-        Description: description,
-        Rule:        rule,
-        // 他のフィールド...
+func (s *ConditionCounterStrategy) Evaluate(ctx context.Context, part core.ConditionPart, params map[string]interface{}) error {
+    // パラメータから増分値を取得
+    increment, ok := params["increment"].(int64)
+    if !ok {
+        return fmt.Errorf("invalid increment value")
     }
-}
-```
 
-### 2.2 Condition生成時の初期化
-```go
-func NewCondition(...) *Condition {
-    return &Condition{
-        Name:        name,
-        Description: description,
-        // 他のフィールド...
+    // カウンター値を更新
+    s.currentValue += increment
+
+    // ComparisonOperatorを使用して条件を評価
+    satisfied := false
+    switch part.ComparisonOperator {
+    case ComparisonOperatorEQ:
+        satisfied = s.currentValue == part.GetReferenceValueInt()
+    case ComparisonOperatorGTE:
+        satisfied = s.currentValue >= part.GetReferenceValueInt()
+    case ComparisonOperatorLTE:
+        satisfied = s.currentValue <= part.GetReferenceValueInt()
+    // 他の比較演算子も同様に実装
     }
+
+    if satisfied {
+        return part.Complete(ctx)
+    }
+    return nil
+}
+
+func (s *ConditionCounterStrategy) Cleanup() error {
+    s.currentValue = 0
+    return nil
 }
 ```
 
-## 3. テストケースの追加
+## 2. 状態管理の実装
 
-### 3.1 Phase時間管理のテスト
+### 2.1 状態遷移の定義
+- Unsatisfied → Processing: ボタン押下時
+- Processing → Satisfied: ComparisonOperatorによる条件満足時
+- Processing → Unsatisfied: リセット時
+
+### 2.2 カウンター状態の管理
+- カウンター値はStrategy内部で管理
+- 条件評価はComparisonOperatorを使用
+- パラメータはEvaluateメソッドで渡す
+
+## 3. APIエンドポイントの実装
+
+### 3.1 新規エンドポイント
 ```go
-func TestPhaseTimeManagement(t *testing.T) {
-    // 1. Activate時にStartTimeが設定されることを確認
-    // 2. Finish時にFinishTimeが設定されることを確認
-    // 3. Reset時に両方がnilになることを確認
+POST /api/condition/{condition_id}/part/{part_id}/evaluate
+Request Body:
+{
+    "increment": 2  // 増分値をパラメータとして渡す
 }
 ```
 
-### 3.2 Condition時間管理のテスト
-```go
-func TestConditionTimeManagement(t *testing.T) {
-    // 1. Activate時にStartTimeが設定されることを確認
-    // 2. Complete時にFinishTimeが設定されることを確認
-    // 3. Reset時に両方がnilになることを確認
+### 3.2 レスポンス形式
+```json
+{
+    "current_value": 10,
+    "target_value": 20,
+    "comparison_operator": "gte",
+    "is_satisfied": false
 }
 ```
 
-### 3.3 ConditionPart時間管理のテスト
-```go
-func TestConditionPartTimeManagement(t *testing.T) {
-    // 1. Activate時にStartTimeが設定されることを確認
-    // 2. Complete/Timeout時にFinishTimeが設定されることを確認
-    // 3. Reset時に両方がnilになることを確認
+## 4. フロントエンド実装
+
+### 4.1 UIコンポーネント
+- カウンター表示
+- 評価ボタン（増分値を設定可能）
+- 現在値/目標値の表示
+- 比較演算子の表示
+
+### 4.2 イベントハンドリング
+```javascript
+async function handleEvaluate(conditionId, partId, increment) {
+    const response = await fetch(`/api/condition/${conditionId}/part/${partId}/evaluate`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ increment })
+    });
+    const data = await response.json();
+    updateCounterUI(data);
 }
 ```
 
-## 4. 実装手順
+## 5. テスト計画
 
-1. 各エンティティのcallbacksを修正
-   - StartTime設定の追加
-   - FinishTime設定の追加
-   - Reset処理の修正
+### 5.1 ユニットテスト
+- ConditionCounterStrategy
+  - 各ComparisonOperatorのテスト
+  - パラメータ処理のテスト
+  - エラーケースのテスト
 
-2. state_facade.goの修正
-   - インスタンス生成時の初期化処理追加
+### 5.2 統合テスト
+- フロントエンド-バックエンド連携
+- 状態遷移の検証
+- ComparisonOperatorの動作確認
 
-3. テストの実装
-   - 各エンティティの時間管理テスト追加
-   - 状態遷移のテスト追加
-   - Reset処理のテスト追加
+## 6. 実装手順
 
-4. 動作確認
-   - 各状態遷移での時間設定を確認
-   - Reset時の初期化を確認
+1. ConditionCounterStrategyの実装
+2. ComparisonOperatorを使用した条件評価の実装
+3. APIエンドポイントの追加
+4. フロントエンドUIの実装
+5. テストの実装と実行
+6. ドキュメントの更新
+
+## 7. 拡張性考慮事項
+
+### 7.1 新規戦略追加への対応
+- PartStrategyインターフェースの維持
+- パラメータ渡しによる柔軟な拡張
+
+### 7.2 パラメータ設定の柔軟性
+- Evaluateメソッドのパラメータによる動的な振る舞いの制御
+- 新しいComparisonOperatorの追加容易性
+
+## 8. エラーハンドリング
+
+### 8.1 考慮すべきエラーケース
+- 不正なパラメータ
+- 未サポートのComparisonOperator
+- 並行アクセス
+
+### 8.2 エラーレスポンス
+```json
+{
+    "error": "invalid_parameters",
+    "message": "Invalid increment value provided"
+}

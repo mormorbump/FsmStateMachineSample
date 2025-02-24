@@ -16,20 +16,20 @@ import (
 
 // Condition は状態遷移の条件を表す構造体です
 type Condition struct {
-	ID                         core.ConditionID
-	Label                      string
-	Kind                       core.ConditionKind
-	Parts                      map[core.ConditionPartID]*ConditionPart
-	Name                       string
-	Description                string
-	IsClear                    bool
-	StartTime                  *time.Time
-	FinishTime                 *time.Time
-	fsm                        *fsm.FSM
-	*core.StateSubjectImpl     // Subject実装
-	*core.ConditionSubjectImpl // Condition Subject実装
-	mu                         sync.RWMutex
-	log                        *zap.Logger
+	ID                     core.ConditionID
+	Label                  string
+	Kind                   core.ConditionKind
+	Parts                  map[core.ConditionPartID]*ConditionPart
+	Name                   string
+	Description            string
+	IsClear                bool
+	StartTime              *time.Time
+	FinishTime             *time.Time
+	fsm                    *fsm.FSM
+	*core.StateSubjectImpl // Subject実装
+	*ConditionSubjectImpl  // Condition Subject実装
+	mu                     sync.RWMutex
+	log                    *zap.Logger
 
 	satisfiedParts map[core.ConditionPartID]bool
 }
@@ -43,7 +43,7 @@ func NewCondition(id core.ConditionID, label string, kind core.ConditionKind) *C
 		Kind:                 kind,
 		Parts:                make(map[core.ConditionPartID]*ConditionPart),
 		StateSubjectImpl:     core.NewStateSubjectImpl(),
-		ConditionSubjectImpl: core.NewConditionSubjectImpl(),
+		ConditionSubjectImpl: NewConditionSubjectImpl(),
 		satisfiedParts:       make(map[core.ConditionPartID]bool),
 		IsClear:              false,
 		StartTime:            nil,
@@ -209,7 +209,7 @@ func (c *Condition) AddPart(part *ConditionPart) {
 	c.Parts[part.ID] = part
 }
 
-func (c *Condition) InitializePartStrategies(factory *core.DefaultConditionStrategyFactory) error {
+func (c *Condition) InitializePartStrategies(factory *DefaultConditionStrategyFactory) error {
 	strategy, err := factory.CreateStrategy(c.Kind)
 	if err != nil {
 		return fmt.Errorf("failed to create strategy %w", err)

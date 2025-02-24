@@ -18,42 +18,26 @@ import (
 type ConditionPart struct {
 	ID                     core.ConditionPartID
 	Label                  string
-	ComparisonOperator     ComparisonOperator
+	ComparisonOperator     core.ComparisonOperator
 	IsClear                bool
 	TargetEntityType       string
 	TargetEntityID         int64
 	ReferenceValueInt      int64
 	ReferenceValueFloat    float64
 	ReferenceValueString   string
-	MinValue               float64
-	MaxValue               float64
+	MinValue               int64
+	MaxValue               int64
 	Priority               int32
 	StartTime              *time.Time
 	FinishTime             *time.Time
 	fsm                    *fsm.FSM
 	*core.StateSubjectImpl // Subject実装
-	*core.ConditionPartSubjectImpl
+	*ConditionPartSubjectImpl
 	mu  sync.RWMutex
 	log *zap.Logger
 
-	strategy core.PartStrategy
+	strategy PartStrategy
 }
-
-// ComparisonOperator は比較演算子を表す型です
-type ComparisonOperator int
-
-const (
-	ComparisonOperatorUnspecified ComparisonOperator = iota
-	ComparisonOperatorEQ
-	ComparisonOperatorNEQ
-	ComparisonOperatorGT
-	ComparisonOperatorGTE
-	ComparisonOperatorLT
-	ComparisonOperatorLTE
-	ComparisonOperatorBetween
-	ComparisonOperatorIn
-	ComparisonOperatorNotIn
-)
 
 // NewConditionPart は新しいConditionPartインスタンスを作成します
 func NewConditionPart(id core.ConditionPartID, label string) *ConditionPart {
@@ -62,7 +46,7 @@ func NewConditionPart(id core.ConditionPartID, label string) *ConditionPart {
 		ID:                       id,
 		Label:                    label,
 		StateSubjectImpl:         core.NewStateSubjectImpl(),
-		ConditionPartSubjectImpl: core.NewConditionPartSubjectImpl(),
+		ConditionPartSubjectImpl: NewConditionPartSubjectImpl(),
 		IsClear:                  false,
 		StartTime:                nil,
 		FinishTime:               nil,
@@ -78,7 +62,7 @@ func NewConditionPart(id core.ConditionPartID, label string) *ConditionPart {
 				zap.Time("start_time", now),
 			)
 			if p.strategy != nil {
-				if err := p.strategy.Evaluate(ctx, p); err != nil {
+				if err := p.strategy.Evaluate(ctx, p, nil); err != nil {
 					p.log.Error("failed to evaluate strategy", zap.Error(err))
 				}
 			}
@@ -120,7 +104,7 @@ func NewConditionPart(id core.ConditionPartID, label string) *ConditionPart {
 		value.StateReady,
 		fsm.Events{
 			{Name: value.EventActivate, Src: []string{value.StateReady}, Dst: value.StateUnsatisfied},
-			{Name: value.EventStartProcess, Src: []string{value.StateUnsatisfied}, Dst: value.StateProcessing},
+			{Name: value.EventProcess, Src: []string{value.StateUnsatisfied}, Dst: value.StateProcessing},
 			{Name: value.EventComplete, Src: []string{value.StateProcessing}, Dst: value.StateSatisfied},
 			{Name: value.EventTimeout, Src: []string{value.StateProcessing, value.StateUnsatisfied}, Dst: value.StateSatisfied},
 			{Name: value.EventRevert, Src: []string{value.StateProcessing}, Dst: value.StateUnsatisfied},
@@ -136,18 +120,30 @@ func (p *ConditionPart) GetReferenceValueInt() int64 {
 	return p.ReferenceValueInt
 }
 
+func (p *ConditionPart) GetComparisonOperator() core.ComparisonOperator {
+	return p.ComparisonOperator
+}
+
+func (p *ConditionPart) GetMaxValue() int64 {
+	return p.MaxValue
+}
+
+func (p *ConditionPart) GetMinValue() int64 {
+	return p.MinValue
+}
+
 func (p *ConditionPart) OnTimeTicked() {
 	p.Timeout(context.Background())
 }
 
 // Validate は条件パーツの妥当性を検証します
 func (p *ConditionPart) Validate() error {
-	if p.ComparisonOperator == ComparisonOperatorUnspecified {
+	if p.ComparisonOperator == core.ComparisonOperatorUnspecified {
 		return errors.New("comparison operator must be specified")
 	}
 
 	// 比較演算子がBetweenの場合、MinValueとMaxValueが必要
-	if p.ComparisonOperator == ComparisonOperatorBetween {
+	if p.ComparisonOperator == core.ComparisonOperatorBetween {
 		if p.MinValue >= p.MaxValue {
 			return errors.New("min_value must be less than max_value")
 		}
@@ -164,11 +160,14 @@ func (p *ConditionPart) Activate(ctx context.Context) error {
 	return p.fsm.Event(ctx, value.EventActivate)
 }
 
-func (p *ConditionPart) StartProcess(ctx context.Context) error {
+func (p *ConditionPart) Process(ctx context.Context, increment int64) error {
 	// 複数人から呼ばれる部分なのでmutex
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.fsm.Event(ctx, value.EventStartProcess)
+	if p.strategy != nil {
+		if err := p.strategy.Evaluate(ctx, p, increment); err != nil {
+			p.log.Error("failed to evaluate strategy", zap.Error(err))
+		}
+	}
+	return p.fsm.Event(ctx, value.EventProcess)
 }
 
 func (p *ConditionPart) Complete(ctx context.Context) error {
@@ -219,7 +218,7 @@ func (p *ConditionPart) Reset(ctx context.Context) error {
 	return p.fsm.Event(ctx, value.EventReset)
 }
 
-func (p *ConditionPart) SetStrategy(strategy core.PartStrategy) error {
+func (p *ConditionPart) SetStrategy(strategy PartStrategy) error {
 	if p.strategy != nil {
 		if err := p.strategy.Cleanup(); err != nil {
 			return fmt.Errorf("failed to cleanup old strategy: %w", err)
