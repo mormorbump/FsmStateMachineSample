@@ -1,66 +1,87 @@
-# ObserverManagerのリネーム実装計画
+# isClearフィールド追加の実装計画
 
-## 1. 変更対象
+## 概要
+Phase、Condition、ConditionPartにisClearというカラムを追加し、条件が満たされた時に適切に更新する実装を行います。
 
-### 1.1 condition_observer.go
-- ObserverManagerをConditionSubjectImplにリネーム
-- インターフェース名とメソッド名の整理
-- コメントの更新
+## 変更対象
+1. ConditionPart
+   - isClearフィールドの追加
+   - StateSatisfiedになった時にisClearをtrueに設定
+   - テストケースの追加
 
-### 1.2 condition.go
-- ObserverManagerの参照をConditionSubjectImplに変更
-- 構造体の埋め込みを更新
-- コメントの更新
+2. Condition
+   - isClearフィールドの追加
+   - OnConditionSatisfiedでsatisfiedがtrueの時にisClearをtrueに設定
+   - テストケースの追加
 
-### 1.3 condition_part.go
-- ObserverManagerの参照をConditionSubjectImplに変更
-- 構造体の埋め込みを更新
-- コメントの更新
+3. Phase
+   - isClearフィールドの追加
+   - OnConditionSatisfiedでsatisfiedがtrueの時にisClearをtrueに設定
+   - テストケースの追加
 
-## 2. 実装の詳細
+## 実装ステップ
 
-### 2.1 ConditionSubjectImpl
-```go
-// ConditionSubjectImpl は条件の状態変化を通知する機能を提供します
-type ConditionSubjectImpl struct {
-    conditionObservers     []ConditionObserver
-    conditionPartObservers []ConditionPartObserver
-}
-```
+### 1. ConditionPartの実装
+1. internal/domain/entity/condition_part.go の修正
+   - structにisClearフィールドを追加
+   - NewConditionPartでisClearをfalseで初期化
+   - IsClearメソッドの追加
+   - StateSatisfiedになった時にisClearをtrueに設定するロジックの追加
 
-### 2.2 メソッド名の整理
-- AddConditionObserver -> 変更なし
-- RemoveConditionObserver -> 変更なし
-- NotifyConditionSatisfied -> 変更なし
-- AddConditionPartObserver -> 変更なし
-- RemoveConditionPartObserver -> 変更なし
-- NotifyPartSatisfied -> 変更なし
+2. internal/domain/entity/condition_part_test.go の修正
+   - isClearの初期値テスト
+   - StateSatisfiedになった時のisClearの変更テスト
+   - IsClearメソッドのテスト
 
-## 3. 移行手順
+### 2. Conditionの実装
+1. internal/domain/entity/condition.go の修正
+   - structにisClearフィールドを追加
+   - NewConditionでisClearをfalseで初期化
+   - IsClearメソッドの追加
+   - OnConditionSatisfiedでsatisfiedがtrueの時にisClearをtrueに設定するロジックの追加
 
-1. condition_observer.goの修正
-   - 型名の変更
-   - コメントの更新
-   - インターフェースの整理
+2. internal/domain/entity/condition_test.go の修正
+   - isClearの初期値テスト
+   - OnConditionSatisfiedでsatisfiedがtrueの時のisClearの変更テスト
+   - IsClearメソッドのテスト
 
-2. condition.goの修正
-   - 構造体の埋め込み更新
-   - NewCondition関数の更新
-   - コメントの更新
+### 3. Phaseの実装
+1. internal/domain/entity/phase.go の修正
+   - structにisClearフィールドを追加
+   - NewPhaseでisClearをfalseで初期化
+   - IsClearメソッドの追加
+   - OnConditionSatisfiedでsatisfiedがtrueの時にisClearをtrueに設定するロジックの追加
 
-3. condition_part.goの修正
-   - 構造体の埋め込み更新
-   - NewConditionPart関数の更新
-   - コメントの更新
+2. internal/domain/entity/phase_test.go の修正
+   - isClearの初期値テスト
+   - OnConditionSatisfiedでsatisfiedがtrueの時のisClearの変更テスト
+   - IsClearメソッドのテスト
 
-## 4. 影響範囲
+## テスト計画
 
-- 型名の変更のみで、インターフェースや機能は変更なし
-- 既存のテストコードへの影響も最小限
-- 外部からの利用方法は変更なし
+### ConditionPartのテスト
+1. 初期状態でisClearがfalseであることを確認
+2. StateSatisfiedになった時にisClearがtrueになることを確認
+3. IsClearメソッドが正しい値を返すことを確認
 
-## 5. 期待される改善
+### Conditionのテスト
+1. 初期状態でisClearがfalseであることを確認
+2. OnConditionSatisfiedでsatisfiedがtrueの時にisClearがtrueになることを確認
+3. IsClearメソッドが正しい値を返すことを確認
 
-- Subject/Observerパターンの意図がより明確に
-- コードの意図が理解しやすく
-- 将来の拡張がしやすい設計に
+### Phaseのテスト
+1. 初期状態でisClearがfalseであることを確認
+2. OnConditionSatisfiedでsatisfiedがtrueの時にisClearがtrueになることを確認
+3. IsClearメソッドが正しい値を返すことを確認
+
+## 実装の注意点
+- 各エンティティのisClearは一度trueになったら、falseに戻らない
+- テストは各状態遷移を確実にカバーする
+- 既存の機能に影響を与えないように注意する
+
+## 実装順序
+1. ConditionPart
+2. Condition
+3. Phase
+
+この順序で実装することで、依存関係の低い方から順に実装を進めることができます。

@@ -7,7 +7,6 @@ import (
 	logger "state_sample/internal/lib"
 	"state_sample/internal/usecase"
 	"sync"
-	"time"
 
 	"go.uber.org/zap"
 
@@ -45,19 +44,17 @@ func (s *StateServer) OnStateChanged(state string) {
 	stateInfo := currentPhase.GetStateInfo()
 
 	update := struct {
-		Type           string              `json:"type"`
-		State          string              `json:"state"`
-		Info           *core.GameStateInfo `json:"info,omitempty"`
-		Phase          string              `json:"phase"`
-		NextTransition time.Duration       `json:"next_transition"`
-		Message        string              `json:"message,omitempty"`
+		Type    string              `json:"type"`
+		State   string              `json:"state"`
+		Info    *core.GameStateInfo `json:"info,omitempty"`
+		Phase   string              `json:"phase"`
+		Message string              `json:"message,omitempty"`
 	}{
-		Type:           "state_change",
-		State:          state,
-		Info:           stateInfo,
-		Phase:          currentPhase.Type,
-		NextTransition: currentPhase.Interval,
-		Message:        fmt.Sprintf("interval: %v, order: %v, message: %v", currentPhase.Interval, currentPhase.Order, stateInfo.Message),
+		Type:    "state_change",
+		State:   state,
+		Info:    stateInfo,
+		Phase:   currentPhase.Type,
+		Message: fmt.Sprintf("order: %v, message: %v", currentPhase.Order, stateInfo.Message),
 	}
 	s.broadcastUpdate(update)
 }

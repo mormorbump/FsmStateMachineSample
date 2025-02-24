@@ -14,4 +14,5 @@ const (
 	EventStartProcess = "start_process" // 処理開始
 	EventComplete     = "complete"      // 条件達成で完了
 	EventRevert       = "revert"        // 条件未達で差し戻し
+	EventReset        = "reset"         // 状態リセット
 )

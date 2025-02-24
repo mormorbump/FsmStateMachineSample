@@ -3,8 +3,9 @@ package entity
 import (
 	"context"
 	"errors"
+	"fmt"
+	"state_sample/internal/domain/condition"
 	"state_sample/internal/domain/core"
-	"state_sample/internal/domain/entity/condition_details"
 	"state_sample/internal/domain/value"
 	logger "state_sample/internal/lib"
 	"sync"
@@ -13,14 +14,15 @@ import (
 	"go.uber.org/zap"
 )
 
-// ConditionPart は条件の詳細な部分を表す構造体です
+// ConditionPart は条件の部分的な評価を表す構造体です
 type ConditionPart struct {
-	ID                 ConditionPartID
+	ID                 condition.ConditionPartID
 	Label              string
+	PartKind           condition.Kind
 	ComparisonOperator ComparisonOperator
-
-	TargetEntityType string
-	TargetEntityID   int64
+	isClear            bool
+	TargetEntityType   string
+	TargetEntityID     int64
 
 	ReferenceValueInt    int64
 	ReferenceValueFloat  float64
@@ -33,73 +35,69 @@ type ConditionPart struct {
 
 	fsm                    *fsm.FSM
 	*core.StateSubjectImpl // Subject実装
-	*ConditionSubjectImpl  // Condition Subject実装
-	strategy               condition_details.ConditionStrategy
-	strategyMu             sync.RWMutex
-	mu                     sync.RWMutex
-	log                    *zap.Logger
+	*condition.ConditionPartSubjectImpl
+	mu  sync.RWMutex
+	log *zap.Logger
+
+	strategy condition.Strategy
 }
 
+// ComparisonOperator は比較演算子を表す型です
 type ComparisonOperator int
-type ConditionPartID int
 
 const (
 	ComparisonOperatorUnspecified ComparisonOperator = iota
-	ComparisonOperatorEQ                             // 等しい
-	ComparisonOperatorNEQ                            // 等しくない
-	ComparisonOperatorGT                             // より大きい
-	ComparisonOperatorGTE                            // 以上
-	ComparisonOperatorLT                             // より小さい
-	ComparisonOperatorLTE                            // 以下
-	ComparisonOperatorBetween                        // 範囲内
-	ComparisonOperatorIn                             // 含まれる
-	ComparisonOperatorNotIn                          // 含まれない
+	ComparisonOperatorEQ
+	ComparisonOperatorNEQ
+	ComparisonOperatorGT
+	ComparisonOperatorGTE
+	ComparisonOperatorLT
+	ComparisonOperatorLTE
+	ComparisonOperatorBetween
+	ComparisonOperatorIn
+	ComparisonOperatorNotIn
 )
 
 // NewConditionPart は新しいConditionPartインスタンスを作成します
-func NewConditionPart(id ConditionPartID, label string) *ConditionPart {
+func NewConditionPart(id condition.ConditionPartID, label string) *ConditionPart {
 	log := logger.DefaultLogger()
 	p := &ConditionPart{
-		ID:                   id,
-		Label:                label,
-		StateSubjectImpl:     core.NewStateSubjectImpl(),
-		ConditionSubjectImpl: NewConditionSubjectImpl(),
-		log:                  log,
+		ID:                       id,
+		Label:                    label,
+		StateSubjectImpl:         core.NewStateSubjectImpl(),
+		ConditionPartSubjectImpl: condition.NewConditionPartSubjectImpl(),
+		isClear:                  false,
+		log:                      log,
 	}
 
 	callbacks := fsm.Callbacks{
 		"enter_" + value.StateUnsatisfied: func(ctx context.Context, e *fsm.Event) {
-			p.mu.Lock()
-			defer p.mu.Unlock()
-			p.log.Debug("ConditionPart unsatisfied",
-				zap.Int("id", int(p.ID)),
+			p.log.Debug("Part unsatisfied",
+				zap.Int64("id", int64(p.ID)),
 				zap.String("label", p.Label))
 		},
 		"enter_" + value.StateProcessing: func(ctx context.Context, e *fsm.Event) {
-			p.mu.Lock()
-			defer p.mu.Unlock()
-			p.log.Debug("ConditionPart processing started",
-				zap.Int("id", int(p.ID)),
+			p.log.Debug("Part processing started",
+				zap.Int64("id", int64(p.ID)),
 				zap.String("label", p.Label))
-
-			// Strategyの評価を開始
-			if err := p.EvaluateWithStrategy(ctx); err != nil {
-				p.log.Error("Strategy evaluation failed",
-					zap.Error(err),
-					zap.Int("id", int(p.ID)))
-			}
 		},
 		"enter_" + value.StateSatisfied: func(ctx context.Context, e *fsm.Event) {
-			p.mu.Lock()
-			defer p.mu.Unlock()
-			p.log.Debug("ConditionPart satisfied",
-				zap.Int("id", int(p.ID)),
+			p.log.Debug("Part satisfied",
+				zap.Int64("id", int64(p.ID)),
 				zap.String("label", p.Label))
+			p.mu.Lock()
+			p.isClear = true
+			p.mu.Unlock()
 			p.NotifyStateChanged(value.StateSatisfied)
 			p.NotifyPartSatisfied(p.ID)
 		},
+		"enter_" + value.StateReady: func(ctx context.Context, e *fsm.Event) {
+			p.log.Debug("Part ready",
+				zap.Int64("id", int64(p.ID)),
+				zap.String("label", p.Label))
+		},
 		"after_event": func(ctx context.Context, e *fsm.Event) {
-			p.log.Debug("ConditionPart state transition",
+			p.log.Debug("Part state transition",
 				zap.String("from", e.Src),
 				zap.String("to", e.Dst))
 		},
@@ -112,6 +110,7 @@ func NewConditionPart(id ConditionPartID, label string) *ConditionPart {
 			{Name: value.EventStartProcess, Src: []string{value.StateUnsatisfied}, Dst: value.StateProcessing},
 			{Name: value.EventComplete, Src: []string{value.StateProcessing}, Dst: value.StateSatisfied},
 			{Name: value.EventRevert, Src: []string{value.StateProcessing}, Dst: value.StateUnsatisfied},
+			{Name: value.EventReset, Src: []string{value.StateUnsatisfied, value.StateProcessing, value.StateSatisfied}, Dst: value.StateReady},
 		},
 		callbacks,
 	)
@@ -119,37 +118,29 @@ func NewConditionPart(id ConditionPartID, label string) *ConditionPart {
 	return p
 }
 
-// SetStrategy は評価戦略を設定します
-func (p *ConditionPart) SetStrategy(strategy condition_details.ConditionStrategy) error {
-	p.strategyMu.Lock()
-	defer p.strategyMu.Unlock()
-
-	if p.strategy != nil {
-		if err := p.strategy.Cleanup(); err != nil {
-			return err
-		}
-	}
-
-	p.strategy = strategy
-	return p.strategy.Initialize(p)
+// GetID はConditionPartIDを返します
+func (p *ConditionPart) GetID() condition.ConditionPartID {
+	return p.ID
 }
 
-// EvaluateWithStrategy は設定された戦略で条件を評価します
-func (p *ConditionPart) EvaluateWithStrategy(ctx context.Context) error {
-	p.strategyMu.RLock()
-	defer p.strategyMu.RUnlock()
-
-	if p.strategy == nil {
-		return errors.New("strategy not set")
-	}
-
-	return p.strategy.Evaluate(ctx, p)
+// GetReferenceValueInt はReferenceValueIntを返します
+func (p *ConditionPart) GetReferenceValueInt() int64 {
+	return p.ReferenceValueInt
 }
 
-// OnTimeTicked はタイマーイベントを処理します
+// AddObserver はオブザーバーを追加します
+func (p *ConditionPart) AddObserver(observer interface{}) {
+	if stateObserver, ok := observer.(core.StateObserver); ok {
+		p.StateSubjectImpl.AddObserver(stateObserver)
+	}
+	if partObserver, ok := observer.(condition.ConditionPartObserver); ok {
+		p.ConditionPartSubjectImpl.AddConditionPartObserver(partObserver)
+	}
+}
+
+// OnTimeTicked はタイマーのティック時に呼び出されます
 func (p *ConditionPart) OnTimeTicked() {
-	p.log.Debug("ConditionPart.OnTimeTicked")
-	_ = p.Complete(context.Background())
+	p.Complete(context.Background())
 }
 
 // Validate は条件パーツの妥当性を検証します
@@ -168,32 +159,6 @@ func (p *ConditionPart) Validate() error {
 	return nil
 }
 
-// String はComparisonOperatorを文字列に変換します
-func (o ComparisonOperator) String() string {
-	switch o {
-	case ComparisonOperatorEQ:
-		return "="
-	case ComparisonOperatorNEQ:
-		return "!="
-	case ComparisonOperatorGT:
-		return ">"
-	case ComparisonOperatorGTE:
-		return ">="
-	case ComparisonOperatorLT:
-		return "<"
-	case ComparisonOperatorLTE:
-		return "<="
-	case ComparisonOperatorBetween:
-		return "between"
-	case ComparisonOperatorIn:
-		return "in"
-	case ComparisonOperatorNotIn:
-		return "not in"
-	default:
-		return "unspecified"
-	}
-}
-
 // CurrentState は現在の状態を返します
 func (p *ConditionPart) CurrentState() string {
 	return p.fsm.Current()
@@ -201,6 +166,18 @@ func (p *ConditionPart) CurrentState() string {
 
 // Activate は条件パーツを有効化します
 func (p *ConditionPart) Activate(ctx context.Context) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.strategy != nil {
+		if err := p.strategy.Initialize(p); err != nil {
+			return fmt.Errorf("failed to initialize strategy: %w", err)
+		}
+		if err := p.strategy.Evaluate(ctx, p); err != nil {
+			return fmt.Errorf("failed to evaluate strategy: %w", err)
+		}
+	}
+
 	return p.fsm.Event(ctx, value.EventActivate)
 }
 
@@ -219,7 +196,38 @@ func (p *ConditionPart) Revert(ctx context.Context) error {
 	return p.fsm.Event(ctx, value.EventRevert)
 }
 
-// AddConditionPartObserver は条件パーツの監視者を追加します
-func (p *ConditionPart) AddConditionPartObserver(observer ConditionPartObserver) {
-	p.ConditionSubjectImpl.AddConditionPartObserver(observer)
+// Reset は条件パーツをリセットします
+func (p *ConditionPart) Reset(ctx context.Context) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.strategy != nil {
+		if err := p.strategy.Cleanup(); err != nil {
+			return fmt.Errorf("failed to cleanup strategy: %w", err)
+		}
+	}
+
+	return p.fsm.Event(ctx, value.EventReset)
+}
+
+// IsClear は条件パーツがクリアされているかどうかを返します
+func (p *ConditionPart) IsClear() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.isClear
+}
+
+// SetStrategy は評価戦略を設定します
+func (p *ConditionPart) SetStrategy(strategy condition.Strategy) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.strategy != nil {
+		if err := p.strategy.Cleanup(); err != nil {
+			return fmt.Errorf("failed to cleanup old strategy: %w", err)
+		}
+	}
+
+	p.strategy = strategy
+	return nil
 }
