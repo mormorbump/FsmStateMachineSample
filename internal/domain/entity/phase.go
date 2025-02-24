@@ -18,16 +18,14 @@ type Phase struct {
 
 	isActive               bool
 	fsm                    *fsm.FSM
-	isClear                bool
+	IsClear                bool
 	*core.StateSubjectImpl // Subject実装
 	mu                     sync.RWMutex
 	log                    *zap.Logger
-
-	// 条件システム
-	conditionType       ConditionType
-	conditionIDs        []int64
-	satisfiedConditions map[core.ConditionID]bool
-	conditions          map[core.ConditionID]*Condition
+	ConditionType          ConditionType
+	ConditionIDs           []core.ConditionID
+	SatisfiedConditions    map[core.ConditionID]bool
+	Conditions             map[core.ConditionID]*Condition
 }
 
 // ConditionType は条件の組み合わせ方を表す型です
@@ -41,7 +39,7 @@ const (
 )
 
 // NewPhase は新しいPhaseインスタンスを作成します
-func NewPhase(phaseType string, order int, cond *Condition) *Phase {
+func NewPhase(phaseType string, order int, conditions []*Condition) *Phase {
 	log := logger.DefaultLogger()
 
 	p := &Phase{
@@ -49,25 +47,24 @@ func NewPhase(phaseType string, order int, cond *Condition) *Phase {
 		isActive:            false,
 		Order:               order,
 		StateSubjectImpl:    core.NewStateSubjectImpl(),
-		conditionType:       ConditionTypeSingle,
-		conditionIDs:        []int64{int64(order)},
-		satisfiedConditions: make(map[core.ConditionID]bool),
-		conditions:          make(map[core.ConditionID]*Condition),
-		isClear:             false,
+		ConditionType:       ConditionTypeSingle,
+		SatisfiedConditions: make(map[core.ConditionID]bool),
+		Conditions:          make(map[core.ConditionID]*Condition),
+		ConditionIDs:        make([]core.ConditionID, 0),
+		IsClear:             false,
 		log:                 log,
 	}
 
-	// 条件の設定
-	p.conditions[cond.ID] = cond
+	for _, cond := range conditions {
+		p.ConditionIDs = append(p.ConditionIDs, cond.ID)
+		p.Conditions[cond.ID] = cond
+	}
 
 	callbacks := fsm.Callbacks{
 		"enter_" + core.StateActive: func(ctx context.Context, e *fsm.Event) {
-			p.mu.Lock()
 			p.isActive = true
-			p.mu.Unlock()
-
-			// 条件のアクティベート
-			for _, c := range p.conditions {
+			for _, c := range p.Conditions {
+				p.log.Debug("Phase enter_active: Activating condition", zap.Any("condition", c))
 				if err := c.Activate(ctx); err != nil {
 					p.log.Error("Failed to activate condition",
 						zap.Error(err),
@@ -77,15 +74,11 @@ func NewPhase(phaseType string, order int, cond *Condition) *Phase {
 		},
 		"enter_" + core.StateNext: func(ctx context.Context, e *fsm.Event) {},
 		"enter_" + core.StateFinish: func(ctx context.Context, e *fsm.Event) {
-			p.mu.Lock()
 			p.isActive = false
-			p.mu.Unlock()
 		},
 		"enter_" + core.StateReady: func(ctx context.Context, e *fsm.Event) {
-			p.mu.Lock()
 			p.isActive = false
-			p.satisfiedConditions = make(map[core.ConditionID]bool)
-			p.mu.Unlock()
+			p.SatisfiedConditions = make(map[core.ConditionID]bool)
 		},
 		"after_event": func(ctx context.Context, e *fsm.Event) {
 			p.log.Debug("Phase transition", zap.String("Type", p.Type), zap.String("from", e.Src), zap.String("to", e.Dst))
@@ -114,10 +107,10 @@ func NewPhase(phaseType string, order int, cond *Condition) *Phase {
 func (p *Phase) OnConditionSatisfied(conditionID core.ConditionID) {
 	p.log.Debug("Phase.OnConditionSatisfied")
 	p.mu.Lock()
-	p.satisfiedConditions[conditionID] = true
+	p.SatisfiedConditions[conditionID] = true
 	satisfied := p.checkConditionsSatisfied()
 	if satisfied {
-		p.isClear = true
+		p.IsClear = true
 	}
 	p.mu.Unlock()
 
@@ -132,28 +125,18 @@ func (p *Phase) OnConditionSatisfied(conditionID core.ConditionID) {
 
 // checkConditionsSatisfied は条件が満たされているかチェックします
 func (p *Phase) checkConditionsSatisfied() bool {
-	if len(p.conditionIDs) == 0 {
+	if len(p.ConditionIDs) == 0 {
 		return false
 	}
 
-	switch p.conditionType {
+	switch p.ConditionType {
 	case ConditionTypeOr, ConditionTypeSingle:
-		return len(p.satisfiedConditions) > 0
+		return len(p.SatisfiedConditions) > 0
 	case ConditionTypeAnd:
-		return len(p.satisfiedConditions) == len(p.conditionIDs)
+		return len(p.SatisfiedConditions) == len(p.ConditionIDs)
 	default:
 		return false
 	}
-}
-
-// SetConditions は条件を設定します
-func (p *Phase) SetConditions(conditionType ConditionType, conditionIDs []int64) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	p.conditionType = conditionType
-	p.conditionIDs = conditionIDs
-	p.satisfiedConditions = make(map[core.ConditionID]bool)
 }
 
 func (p *Phase) CurrentState() string {
@@ -162,6 +145,10 @@ func (p *Phase) CurrentState() string {
 
 func (p *Phase) GetStateInfo() *core.GameStateInfo {
 	return core.GetGameStateInfo(p.CurrentState())
+}
+
+func (p *Phase) GetConditions() map[core.ConditionID]*Condition {
+	return p.Conditions
 }
 
 func (p *Phase) Activate(ctx context.Context) error {
@@ -182,7 +169,7 @@ func (p *Phase) Reset(ctx context.Context) error {
 	}
 
 	// 条件とパーツをリセット
-	for _, cond := range p.conditions {
+	for _, cond := range p.Conditions {
 		if err := cond.Reset(ctx); err != nil {
 			return fmt.Errorf("failed to reset condition: %w", err)
 		}
@@ -195,8 +182,11 @@ func (p *Phase) Reset(ctx context.Context) error {
 type Phases []*Phase
 
 func (p Phases) Current() *Phase {
+	log := logger.DefaultLogger()
+	log.Debug("Phases.Current")
 	for _, phase := range p {
 		if phase.isActive {
+			log.Debug("Phases.Current", zap.String("type", phase.Type))
 			return phase
 		}
 	}
@@ -212,13 +202,6 @@ func (p Phases) ResetAll(ctx context.Context) error {
 	return nil
 }
 
-// IsClear はフェーズがクリアされているかどうかを返します
-func (p *Phase) IsClear() bool {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.isClear
-}
-
 // ProcessAndActivateByNextOrder 次のフェーズに移行
 func (p Phases) ProcessAndActivateByNextOrder(ctx context.Context) (*Phase, error) {
 	log := logger.DefaultLogger()
@@ -226,11 +209,14 @@ func (p Phases) ProcessAndActivateByNextOrder(ctx context.Context) (*Phase, erro
 
 	if current == nil {
 		if len(p) <= 0 {
-			log.Error("Phases", zap.Error(fmt.Errorf("no phases available")))
+			log.Error("Phases.ProcessAndActivateByNextOrder", zap.Error(fmt.Errorf("no phases available")))
 			return nil, fmt.Errorf("no phases available")
 		}
 
-		log.Debug("Phases", zap.String("action", "Starting first phase"))
+		log.Debug("Phases.ProcessAndActivateByNextOrder",
+			zap.String("action", "Starting first phase"),
+			zap.String("type", p[0].Type),
+		)
 		return p[0], p[0].Activate(ctx)
 	}
 
@@ -240,8 +226,9 @@ func (p Phases) ProcessAndActivateByNextOrder(ctx context.Context) (*Phase, erro
 	}
 
 	for _, phase := range p {
+		log.Debug("Phases.ProcessAndActivateByNextOrder searching...")
 		if current.Order+1 == phase.Order {
-			log.Debug("Phase action", zap.String("type", phase.Type), zap.String("action", "Activating next phase"))
+			log.Debug("Phases.ProcessAndActivateByNextOrder", zap.String("type", phase.Type), zap.String("action", "Activating next phase"))
 			return phase, phase.Activate(ctx)
 		}
 	}

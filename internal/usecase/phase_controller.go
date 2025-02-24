@@ -21,6 +21,9 @@ type PhaseController struct {
 
 func NewPhaseController(phases entity.Phases) *PhaseController {
 	log := logger.DefaultLogger()
+	if len(phases) <= 0 {
+		log.Error("PhaseController", zap.String("error", "No phases found"))
+	}
 	pc := &PhaseController{
 		phases:           phases,
 		StateSubjectImpl: core.NewStateSubjectImpl(),
@@ -28,11 +31,6 @@ func NewPhaseController(phases entity.Phases) *PhaseController {
 	}
 
 	log.Debug("PhaseController initialized", zap.Int("phases count", len(phases)))
-
-	// 最初のフェーズを設定
-	if len(phases) <= 0 {
-		log.Error("PhaseController", zap.String("error", "No phases found"))
-	}
 	pc.SetCurrentPhase(phases[0])
 	for _, phase := range phases {
 		phase.AddObserver(pc)

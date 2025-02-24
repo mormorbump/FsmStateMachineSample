@@ -41,8 +41,8 @@ func TestPhase_NewPhase(t *testing.T) {
 	assert.Equal(t, phaseType, phase.Type)
 	assert.Equal(t, order, phase.Order)
 	assert.Equal(t, core.StateReady, phase.CurrentState())
-	assert.Equal(t, ConditionTypeSingle, phase.conditionType)
-	assert.Len(t, phase.conditionIDs, 1)
+	assert.Equal(t, ConditionTypeSingle, phase.ConditionType)
+	assert.Len(t, phase.ConditionIDs, 1)
 	assert.Len(t, phase.conditions, 1)
 }
 
@@ -52,14 +52,14 @@ func TestPhase_IsClear(t *testing.T) {
 	ctx := context.Background()
 
 	// Assert initial state
-	assert.False(t, phase.IsClear(), "isClear should be false initially")
+	assert.False(t, phase.IsClear(), "IsClear should be false initially")
 
 	// Act: activate phase and satisfy condition
 	_ = phase.Activate(ctx)
 	phase.OnConditionSatisfied(core.ConditionID(1))
 
-	// Assert: isClear should be true after condition is satisfied
-	assert.True(t, phase.IsClear(), "isClear should be true after condition is satisfied")
+	// Assert: IsClear should be true after condition is satisfied
+	assert.True(t, phase.IsClear(), "IsClear should be true after condition is satisfied")
 }
 
 func TestPhase_StateTransitions(t *testing.T) {

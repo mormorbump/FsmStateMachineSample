@@ -16,7 +16,6 @@ func NewTimeConditionStrategy() *ConditionTimeStrategy {
 	return &ConditionTimeStrategy{}
 }
 
-// Initialize は時間条件の戦略を初期化します
 func (s *ConditionTimeStrategy) Initialize(part ConditionPart) error {
 	if part.GetReferenceValueInt() <= 0 {
 		return fmt.Errorf("invalid time interval: %d", part.GetReferenceValueInt())

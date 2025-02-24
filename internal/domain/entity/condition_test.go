@@ -48,15 +48,15 @@ func TestCondition_IsClear(t *testing.T) {
 	ctx := context.Background()
 
 	// Assert initial state
-	assert.False(t, cond.IsClear(), "isClear should be false initially")
+	assert.False(t, cond.IsClear(), "IsClear should be false initially")
 
 	// Act: transition to satisfied state
 	_ = cond.Activate(ctx)
 	_ = cond.StartProcess(ctx)
 	cond.OnPartSatisfied(part.ID)
 
-	// Assert: isClear should be true after satisfied
-	assert.True(t, cond.IsClear(), "isClear should be true after satisfied")
+	// Assert: IsClear should be true after satisfied
+	assert.True(t, cond.IsClear(), "IsClear should be true after satisfied")
 }
 
 func TestCondition_StateTransitions(t *testing.T) {

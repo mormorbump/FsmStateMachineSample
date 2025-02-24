@@ -18,7 +18,7 @@ type ConditionPart struct {
 	ID                 core.ConditionPartID
 	Label              string
 	ComparisonOperator ComparisonOperator
-	isClear            bool
+	IsClear            bool
 	TargetEntityType   string
 	TargetEntityID     int64
 
@@ -64,22 +64,33 @@ func NewConditionPart(id core.ConditionPartID, label string) *ConditionPart {
 		Label:                    label,
 		StateSubjectImpl:         core.NewStateSubjectImpl(),
 		ConditionPartSubjectImpl: core.NewConditionPartSubjectImpl(),
-		isClear:                  false,
+		IsClear:                  false,
 		log:                      log,
 	}
 
 	callbacks := fsm.Callbacks{
-		"enter_" + value.StateUnsatisfied: func(ctx context.Context, e *fsm.Event) {},
-		"enter_" + value.StateProcessing:  func(ctx context.Context, e *fsm.Event) {},
-		"after_" + value.StateSatisfied: func(ctx context.Context, e *fsm.Event) {
-			p.isClear = true
-			p.log.Debug("part satisfied",
-				zap.Bool("isClear", p.isClear),
+		"enter_" + value.StateUnsatisfied: func(ctx context.Context, e *fsm.Event) {
+			log.Debug("ConditionPart enter_unsatisfied",
+				zap.Int64("id", int64(p.ID)),
 			)
+			if err := p.strategy.Evaluate(ctx, p); err != nil {
+				p.log.Error("failed to evaluate strategy: %w", zap.Error(err))
+			}
+		},
+		"enter_" + value.StateProcessing: func(ctx context.Context, e *fsm.Event) {},
+		"enter_" + value.StateSatisfied: func(ctx context.Context, e *fsm.Event) {
+			p.IsClear = true
+			p.log.Debug("part satisfied",
+				zap.Bool("IsClear", p.IsClear),
+			)
+			err := p.strategy.Cleanup()
+			if err != nil {
+				p.log.Error("failed to cleanup strategy: %w", zap.Error(err))
+			}
 			p.NotifyPartSatisfied(p.ID)
 		},
 		"enter_" + value.StateReady: func(ctx context.Context, e *fsm.Event) {
-			p.isClear = false
+			p.IsClear = false
 		},
 		"after_event": func(ctx context.Context, e *fsm.Event) {
 			p.log.Debug("ConditionPart Info",
@@ -107,12 +118,10 @@ func NewConditionPart(id core.ConditionPartID, label string) *ConditionPart {
 	return p
 }
 
-// GetReferenceValueInt はReferenceValueIntを返します
 func (p *ConditionPart) GetReferenceValueInt() int64 {
 	return p.ReferenceValueInt
 }
 
-// OnTimeTicked はタイマーのティック時に呼び出されます
 func (p *ConditionPart) OnTimeTicked() {
 	p.Timeout(context.Background())
 }
@@ -133,27 +142,18 @@ func (p *ConditionPart) Validate() error {
 	return nil
 }
 
-// CurrentState は現在の状態を返します
 func (p *ConditionPart) CurrentState() string {
 	return p.fsm.Current()
 }
 
-// Activate は条件パーツを有効化します
 func (p *ConditionPart) Activate(ctx context.Context) error {
-	if p.strategy != nil {
-		if err := p.strategy.Initialize(p); err != nil {
-			return fmt.Errorf("failed to initialize strategy: %w", err)
-		}
-	}
-
-	if err := p.strategy.Evaluate(ctx, p); err != nil {
-		return fmt.Errorf("failed to evaluate strategy: %w", err)
-	}
-
 	return p.fsm.Event(ctx, value.EventActivate)
 }
 
 func (p *ConditionPart) StartProcess(ctx context.Context) error {
+	// 複数人から呼ばれる部分なのでmutex
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	return p.fsm.Event(ctx, value.EventStartProcess)
 }
 
@@ -182,24 +182,16 @@ func (p *ConditionPart) Reset(ctx context.Context) error {
 	return p.fsm.Event(ctx, value.EventReset)
 }
 
-// IsClear は条件パーツがクリアされているかどうかを返します
-func (p *ConditionPart) IsClear() bool {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.isClear
-}
-
-// SetStrategy は評価戦略を設定します
 func (p *ConditionPart) SetStrategy(strategy core.PartStrategy) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	if p.strategy != nil {
 		if err := p.strategy.Cleanup(); err != nil {
 			return fmt.Errorf("failed to cleanup old strategy: %w", err)
 		}
 	}
 
+	if err := strategy.Initialize(p); err != nil {
+		return fmt.Errorf("failed to setup strategy: %w", err)
+	}
 	p.strategy = strategy
 	return nil
 }
