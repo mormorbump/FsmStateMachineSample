@@ -6,7 +6,6 @@ import (
 	"state_sample/internal/domain/core"
 	logger "state_sample/internal/lib"
 	"sync"
-	"time"
 
 	"github.com/looplab/fsm"
 	"go.uber.org/zap"
@@ -14,28 +13,46 @@ import (
 
 // Phase はゲームの各フェーズを表す構造体です
 type Phase struct {
-	Type                   string
-	Interval               time.Duration
-	Order                  int
-	isActive               bool
-	fsm                    *fsm.FSM
-	timer                  *core.IntervalTimer
+	Type     string
+	Interval int64 // milliseconds
+	Order    int
+
+	isActive bool
+	fsm      *fsm.FSM
+
 	*core.StateSubjectImpl // Subject実装
 	mu                     sync.RWMutex
 	log                    *zap.Logger
+
+	// 条件システム
+	conditionType       ConditionType
+	conditionIDs        []int64
+	satisfiedConditions map[ConditionID]bool
 }
 
+// ConditionType は条件の組み合わせ方を表す型です
+type ConditionType int
+
+const (
+	ConditionTypeUnspecified ConditionType = iota
+	ConditionTypeAnd                       // すべての条件を満たす必要がある
+	ConditionTypeOr                        // いずれかの条件を満たせばよい
+	ConditionTypeSingle                    // 単一条件
+)
+
 // NewPhase は新しいPhaseインスタンスを作成します
-func NewPhase(phaseType string, interval time.Duration, order int) *Phase {
+func NewPhase(phaseType string, interval int64, order int) *Phase {
 	log := logger.DefaultLogger()
 	p := &Phase{
-		Type:             phaseType,
-		Interval:         interval,
-		isActive:         false,
-		Order:            order,
-		timer:            core.NewIntervalTimer(interval),
-		StateSubjectImpl: core.NewStateSubjectImpl(),
-		log:              log,
+		Type:                phaseType,
+		Interval:            interval,
+		isActive:            false,
+		Order:               order,
+		StateSubjectImpl:    core.NewStateSubjectImpl(),
+		log:                 log,
+		conditionType:       ConditionTypeUnspecified,
+		conditionIDs:        make([]int64, 0),
+		satisfiedConditions: make(map[ConditionID]bool),
 	}
 
 	callbacks := fsm.Callbacks{
@@ -43,25 +60,22 @@ func NewPhase(phaseType string, interval time.Duration, order int) *Phase {
 			p.mu.Lock()
 			defer p.mu.Unlock()
 			p.isActive = true
-			p.timer.UpdateInterval(p.Interval)
-			p.timer.Start()
 		},
 		"enter_" + core.StateNext: func(ctx context.Context, e *fsm.Event) {
 			p.mu.Lock()
 			defer p.mu.Unlock()
-			p.timer.Stop()
+			p.isActive = false
 		},
 		"enter_" + core.StateFinish: func(ctx context.Context, e *fsm.Event) {
 			p.mu.Lock()
 			defer p.mu.Unlock()
 			p.isActive = false
-			p.timer.Stop()
 		},
 		"after_" + core.EventReset: func(ctx context.Context, e *fsm.Event) {
 			p.mu.Lock()
 			defer p.mu.Unlock()
 			p.isActive = false
-			p.timer.Stop()
+			p.satisfiedConditions = make(map[ConditionID]bool)
 		},
 		"after_event": func(ctx context.Context, e *fsm.Event) {
 			p.log.Debug("Phase transition", zap.String("from", e.Src), zap.String("to", e.Dst))
@@ -83,15 +97,44 @@ func NewPhase(phaseType string, interval time.Duration, order int) *Phase {
 		callbacks,
 	)
 
-	// タイマーの監視を開始
-	p.timer.AddObserver(p)
-
 	return p
 }
 
-func (p *Phase) OnTimeTicked() {
-	p.log.Debug("Phase.OnTimeTicked")
-	_ = p.Next(context.Background())
+// OnConditionSatisfied は条件が満たされた時に呼び出されます
+func (p *Phase) OnConditionSatisfied(conditionID ConditionID) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.satisfiedConditions[conditionID] = true
+	if p.checkConditionsSatisfied() {
+		_ = p.Next(context.Background())
+	}
+}
+
+// checkConditionsSatisfied は条件が満たされているかチェックします
+func (p *Phase) checkConditionsSatisfied() bool {
+	if len(p.conditionIDs) == 0 {
+		return false
+	}
+
+	switch p.conditionType {
+	case ConditionTypeOr, ConditionTypeSingle:
+		return len(p.satisfiedConditions) > 0
+	case ConditionTypeAnd:
+		return len(p.satisfiedConditions) == len(p.conditionIDs)
+	default:
+		return false
+	}
+}
+
+// SetConditions は条件を設定します
+func (p *Phase) SetConditions(conditionType ConditionType, conditionIDs []int64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.conditionType = conditionType
+	p.conditionIDs = conditionIDs
+	p.satisfiedConditions = make(map[ConditionID]bool)
 }
 
 func (p *Phase) CurrentState() string {
