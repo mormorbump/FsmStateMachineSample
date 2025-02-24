@@ -3,7 +3,6 @@ package entity
 import (
 	"context"
 	"fmt"
-	"state_sample/internal/domain/condition"
 	"state_sample/internal/domain/core"
 	logger "state_sample/internal/lib"
 	"sync"
@@ -27,8 +26,8 @@ type Phase struct {
 	// 条件システム
 	conditionType       ConditionType
 	conditionIDs        []int64
-	satisfiedConditions map[condition.ConditionID]bool
-	conditions          map[condition.ConditionID]*Condition
+	satisfiedConditions map[core.ConditionID]bool
+	conditions          map[core.ConditionID]*Condition
 }
 
 // ConditionType は条件の組み合わせ方を表す型です
@@ -52,8 +51,8 @@ func NewPhase(phaseType string, order int, cond *Condition) *Phase {
 		StateSubjectImpl:    core.NewStateSubjectImpl(),
 		conditionType:       ConditionTypeSingle,
 		conditionIDs:        []int64{int64(order)},
-		satisfiedConditions: make(map[condition.ConditionID]bool),
-		conditions:          make(map[condition.ConditionID]*Condition),
+		satisfiedConditions: make(map[core.ConditionID]bool),
+		conditions:          make(map[core.ConditionID]*Condition),
 		isClear:             false,
 		log:                 log,
 	}
@@ -68,11 +67,11 @@ func NewPhase(phaseType string, order int, cond *Condition) *Phase {
 			p.mu.Unlock()
 
 			// 条件のアクティベート
-			for _, cond := range p.conditions {
-				if err := cond.Activate(ctx); err != nil {
+			for _, c := range p.conditions {
+				if err := c.Activate(ctx); err != nil {
 					p.log.Error("Failed to activate condition",
 						zap.Error(err),
-						zap.Int64("condition_id", int64(cond.ID)))
+						zap.Int64("condition_id", int64(c.ID)))
 				}
 			}
 		},
@@ -85,7 +84,7 @@ func NewPhase(phaseType string, order int, cond *Condition) *Phase {
 		"enter_" + core.StateReady: func(ctx context.Context, e *fsm.Event) {
 			p.mu.Lock()
 			p.isActive = false
-			p.satisfiedConditions = make(map[condition.ConditionID]bool)
+			p.satisfiedConditions = make(map[core.ConditionID]bool)
 			p.mu.Unlock()
 		},
 		"after_event": func(ctx context.Context, e *fsm.Event) {
@@ -112,7 +111,8 @@ func NewPhase(phaseType string, order int, cond *Condition) *Phase {
 }
 
 // OnConditionSatisfied は条件が満たされた時に呼び出されます
-func (p *Phase) OnConditionSatisfied(conditionID condition.ConditionID) {
+func (p *Phase) OnConditionSatisfied(conditionID core.ConditionID) {
+	p.log.Debug("Phase.OnConditionSatisfied")
 	p.mu.Lock()
 	p.satisfiedConditions[conditionID] = true
 	satisfied := p.checkConditionsSatisfied()
@@ -121,7 +121,7 @@ func (p *Phase) OnConditionSatisfied(conditionID condition.ConditionID) {
 	}
 	p.mu.Unlock()
 
-	p.log.Debug("Phase", zap.String("type", p.Type), zap.Bool("satisfied", satisfied), zap.Int64("condition_id", int64(conditionID)))
+	p.log.Debug("Phase.OnConditionSatisfied", zap.String("type", p.Type), zap.Bool("satisfied", satisfied), zap.Int64("condition_id", int64(conditionID)))
 	if satisfied {
 		err := p.Next(context.Background())
 		if err != nil {
@@ -153,7 +153,7 @@ func (p *Phase) SetConditions(conditionType ConditionType, conditionIDs []int64)
 
 	p.conditionType = conditionType
 	p.conditionIDs = conditionIDs
-	p.satisfiedConditions = make(map[condition.ConditionID]bool)
+	p.satisfiedConditions = make(map[core.ConditionID]bool)
 }
 
 func (p *Phase) CurrentState() string {

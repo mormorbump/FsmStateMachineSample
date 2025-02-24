@@ -2,7 +2,7 @@ package entity
 
 import (
 	"context"
-	"state_sample/internal/domain/condition"
+	"state_sample/internal/domain/core"
 	"state_sample/internal/domain/value"
 	"testing"
 	"time"
@@ -12,9 +12,9 @@ import (
 
 func TestCondition_NewCondition(t *testing.T) {
 	// Arrange
-	id := condition.ConditionID(1)
+	id := core.ConditionID(1)
 	label := "test_condition"
-	kind := condition.KindTime
+	kind := core.KindTime
 
 	// Act
 	cond := NewCondition(id, label, kind)
@@ -29,7 +29,7 @@ func TestCondition_NewCondition(t *testing.T) {
 
 func TestCondition_AddPart(t *testing.T) {
 	// Arrange
-	cond := NewCondition(1, "test_condition", condition.KindTime)
+	cond := NewCondition(1, "test_condition", core.KindTime)
 	part := NewConditionPart(1, "test_part")
 
 	// Act
@@ -42,7 +42,7 @@ func TestCondition_AddPart(t *testing.T) {
 
 func TestCondition_IsClear(t *testing.T) {
 	// Arrange
-	cond := NewCondition(1, "test_condition", condition.KindTime)
+	cond := NewCondition(1, "test_condition", core.KindTime)
 	part := NewConditionPart(1, "test_part")
 	cond.AddPart(part)
 	ctx := context.Background()
@@ -61,7 +61,7 @@ func TestCondition_IsClear(t *testing.T) {
 
 func TestCondition_StateTransitions(t *testing.T) {
 	// Arrange
-	cond := NewCondition(1, "test_condition", condition.KindTime)
+	cond := NewCondition(1, "test_condition", core.KindTime)
 	part := NewConditionPart(1, "test_part")
 	cond.AddPart(part)
 	ctx := context.Background()
@@ -84,12 +84,12 @@ func TestCondition_StateTransitions(t *testing.T) {
 
 func TestCondition_PartSatisfaction(t *testing.T) {
 	// Arrange
-	cond := NewCondition(1, "test_condition", condition.KindTime)
+	cond := NewCondition(1, "test_condition", core.KindTime)
 	part := NewConditionPart(1, "test_part")
 	cond.AddPart(part)
 	ctx := context.Background()
 	mockObserver := &mockConditionObserver{
-		satisfiedConditions: make([]condition.ConditionID, 0),
+		satisfiedConditions: make([]core.ConditionID, 0),
 	}
 	cond.AddConditionObserver(mockObserver)
 
@@ -105,9 +105,9 @@ func TestCondition_PartSatisfaction(t *testing.T) {
 }
 
 type mockConditionObserver struct {
-	satisfiedConditions []condition.ConditionID
+	satisfiedConditions []core.ConditionID
 }
 
-func (m *mockConditionObserver) OnConditionSatisfied(conditionID condition.ConditionID) {
+func (m *mockConditionObserver) OnConditionSatisfied(conditionID core.ConditionID) {
 	m.satisfiedConditions = append(m.satisfiedConditions, conditionID)
 }

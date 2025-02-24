@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// MockStateObserver は StateObserver インターフェースのモック実装です
+// MockStateObserver StateObserver インターフェースのモック実装
 type MockStateObserver struct {
 	mu            sync.Mutex
 	stateChanges  []string
@@ -42,7 +42,7 @@ func (m *MockStateObserver) SetOnStateChange(f func(state string)) {
 	m.onStateChange = f
 }
 
-// MockTimeObserver は TimeObserver インターフェースのモック実装です
+// MockTimeObserver TimeObserver インターフェースのモック実装
 type MockTimeObserver struct {
 	mu          sync.Mutex
 	tickCount   int
@@ -90,7 +90,6 @@ func (m *MockTimeObserver) WaitForTick(timeout time.Duration) bool {
 	}
 }
 
-// TestHelper はテストで共通して使用するヘルパー関数を提供します
 type TestHelper struct {
 	t *testing.T
 }
@@ -99,7 +98,7 @@ func NewTestHelper(t *testing.T) *TestHelper {
 	return &TestHelper{t: t}
 }
 
-// AssertStateSequence は状態遷移のシーケンスが期待通りかを検証します
+// AssertStateSequence 状態遷移のシーケンスが期待通りかを検証
 func (h *TestHelper) AssertStateSequence(got []string, want []string) {
 	h.t.Helper()
 	if len(got) != len(want) {
@@ -113,7 +112,7 @@ func (h *TestHelper) AssertStateSequence(got []string, want []string) {
 	}
 }
 
-// AssertEventually は指定された条件が一定時間内に満たされることを検証します
+// AssertEventually 指定された条件が一定時間内に満たされることを検証
 func (h *TestHelper) AssertEventually(condition func() bool, timeout time.Duration, message string) {
 	h.t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -126,7 +125,7 @@ func (h *TestHelper) AssertEventually(condition func() bool, timeout time.Durati
 	h.t.Errorf("タイムアウト: %s", message)
 }
 
-// WaitForCondition は指定された条件が満たされるまで待機します
+// WaitForCondition 指定された条件が満たされるまで待機
 func (h *TestHelper) WaitForCondition(condition func() bool, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -138,9 +137,8 @@ func (h *TestHelper) WaitForCondition(condition func() bool, timeout time.Durati
 	return false
 }
 
-// MockTimer はtime.Timerのモック実装です
 type MockTimer struct {
-	C      chan time.Time
+	C       chan time.Time
 	stopped bool
 	mu      sync.Mutex
 }
@@ -176,7 +174,6 @@ func (m *MockTimer) Tick() {
 	}
 }
 
-// SafeCounter はスレッドセーフなカウンターを提供します
 type SafeCounter struct {
 	mu    sync.Mutex
 	count int

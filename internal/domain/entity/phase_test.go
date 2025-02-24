@@ -3,7 +3,6 @@ package entity
 import (
 	"context"
 	"fmt"
-	"state_sample/internal/domain/condition"
 	"state_sample/internal/domain/core"
 	"testing"
 	"time"
@@ -13,13 +12,13 @@ import (
 
 func createCondition(order int, interval int64) *Condition {
 	cond := NewCondition(
-		condition.ConditionID(order),
+		core.ConditionID(order),
 		fmt.Sprintf("test_phase_%d_timer", order),
-		condition.KindTime,
+		core.KindTime,
 	)
 
 	part := NewConditionPart(
-		condition.ConditionPartID(order),
+		core.ConditionPartID(order),
 		fmt.Sprintf("test_phase_%d_timer_part", order),
 	)
 	part.ReferenceValueInt = interval
@@ -57,7 +56,7 @@ func TestPhase_IsClear(t *testing.T) {
 
 	// Act: activate phase and satisfy condition
 	_ = phase.Activate(ctx)
-	phase.OnConditionSatisfied(condition.ConditionID(1))
+	phase.OnConditionSatisfied(core.ConditionID(1))
 
 	// Assert: isClear should be true after condition is satisfied
 	assert.True(t, phase.IsClear(), "isClear should be true after condition is satisfied")
@@ -95,7 +94,7 @@ func TestPhase_ConditionSatisfaction(t *testing.T) {
 
 	// Act
 	_ = phase.Activate(ctx)
-	phase.OnConditionSatisfied(condition.ConditionID(1))
+	phase.OnConditionSatisfied(core.ConditionID(1))
 
 	// Assert
 	time.Sleep(100 * time.Millisecond) // 非同期通知の待機
@@ -120,7 +119,7 @@ func TestPhases_ProcessAndActivateByNextOrder(t *testing.T) {
 	assert.Equal(t, core.StateActive, nextPhase.CurrentState())
 
 	// 次のフェーズに移行
-	nextPhase.OnConditionSatisfied(condition.ConditionID(1))
+	nextPhase.OnConditionSatisfied(core.ConditionID(1))
 	time.Sleep(100 * time.Millisecond) // 非同期通知の待機
 
 	nextPhase, err = phases.ProcessAndActivateByNextOrder(ctx)

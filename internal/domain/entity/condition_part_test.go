@@ -2,7 +2,7 @@ package entity
 
 import (
 	"context"
-	"state_sample/internal/domain/condition"
+	"state_sample/internal/domain/core"
 	"state_sample/internal/domain/value"
 	"testing"
 	"time"
@@ -12,7 +12,7 @@ import (
 
 func TestConditionPart_NewConditionPart(t *testing.T) {
 	// Arrange
-	id := condition.ConditionPartID(1)
+	id := core.ConditionPartID(1)
 	label := "test_part"
 
 	// Act
@@ -49,8 +49,8 @@ func TestConditionPart_Validate(t *testing.T) {
 			name: "invalid between values",
 			part: &ConditionPart{
 				ComparisonOperator: ComparisonOperatorBetween,
-				MinValue:          10,
-				MaxValue:          5,
+				MinValue:           10,
+				MaxValue:           5,
 			},
 			wantErr: true,
 		},
@@ -110,7 +110,7 @@ func TestConditionPart_ObserverNotification(t *testing.T) {
 	// Arrange
 	part := NewConditionPart(1, "test_part")
 	mockObserver := &mockConditionPartObserver{
-		satisfiedParts: make(map[condition.ConditionPartID]bool),
+		satisfiedParts: make(map[core.ConditionPartID]bool),
 	}
 	part.AddObserver(mockObserver)
 	ctx := context.Background()
@@ -126,9 +126,9 @@ func TestConditionPart_ObserverNotification(t *testing.T) {
 }
 
 type mockConditionPartObserver struct {
-	satisfiedParts map[condition.ConditionPartID]bool
+	satisfiedParts map[core.ConditionPartID]bool
 }
 
-func (m *mockConditionPartObserver) OnPartSatisfied(partID condition.ConditionPartID) {
+func (m *mockConditionPartObserver) OnPartSatisfied(partID core.ConditionPartID) {
 	m.satisfiedParts[partID] = true
 }

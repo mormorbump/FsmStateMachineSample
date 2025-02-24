@@ -78,7 +78,7 @@ func (pc *PhaseController) GetPhases() entity.Phases {
 func (pc *PhaseController) Start(ctx context.Context) error {
 	pc.log.Debug("PhaseController.Start", zap.String("action", "Starting phase sequence"))
 	phase, err := pc.phases.ProcessAndActivateByNextOrder(ctx)
-	// 存在しなければfinishで終了
+	// 存在しなければ初期化してからfinishで終了
 	if phase == nil {
 		pc.log.Debug("PhaseController.Start", zap.String("action", "No phases found. notify finish"))
 		pc.SetCurrentPhase(pc.phases[0])

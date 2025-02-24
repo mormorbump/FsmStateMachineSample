@@ -1,87 +1,91 @@
-# isClearフィールド追加の実装計画
+# 実装計画
 
-## 概要
-Phase、Condition、ConditionPartにisClearというカラムを追加し、条件が満たされた時に適切に更新する実装を行います。
+## 1. 問題の特定
+現在のNewStateFacade()には以下の問題があります：
+- Phaseの作成時にConditionが適切に初期化されていない
+- ConditionPartの設定が完全に欠落している
+- 各コンポーネント間の関係性が正しく構築されていない
 
-## 変更対象
-1. ConditionPart
-   - isClearフィールドの追加
-   - StateSatisfiedになった時にisClearをtrueに設定
-   - テストケースの追加
+## 2. 具体的な要件
 
-2. Condition
-   - isClearフィールドの追加
-   - OnConditionSatisfiedでsatisfiedがtrueの時にisClearをtrueに設定
-   - テストケースの追加
+### 2.1 時間条件の設定
+- すべてのConditionKindはTime
+- 各Phaseに対して1つのConditionPartを設定
+- 時間設定：
+  * Phase1: 1秒
+  * Phase2: 2秒
+  * Phase3: 3秒
 
-3. Phase
-   - isClearフィールドの追加
-   - OnConditionSatisfiedでsatisfiedがtrueの時にisClearをtrueに設定
-   - テストケースの追加
+### 2.2 コンポーネントの階層構造
+```
+Phase
+  └── Condition (Kind: Time)
+        └── ConditionPart (ReferenceValueInt: 1-3秒)
+```
 
-## 実装ステップ
+## 3. 実装手順
 
-### 1. ConditionPartの実装
-1. internal/domain/entity/condition_part.go の修正
-   - structにisClearフィールドを追加
-   - NewConditionPartでisClearをfalseで初期化
-   - IsClearメソッドの追加
-   - StateSatisfiedになった時にisClearをtrueに設定するロジックの追加
+1. ConditionPartの作成
+   - TimeStrategyを使用
+   - ReferenceValueIntに各フェーズの時間を設定
+   - ComparisonOperatorはEQ（等価比較）を使用
 
-2. internal/domain/entity/condition_part_test.go の修正
-   - isClearの初期値テスト
-   - StateSatisfiedになった時のisClearの変更テスト
-   - IsClearメソッドのテスト
+2. Conditionの作成
+   - Kind: Time
+   - ConditionTypeはSingle（単一条件）
+   - 各フェーズに対応するConditionPartを設定
 
-### 2. Conditionの実装
-1. internal/domain/entity/condition.go の修正
-   - structにisClearフィールドを追加
-   - NewConditionでisClearをfalseで初期化
-   - IsClearメソッドの追加
-   - OnConditionSatisfiedでsatisfiedがtrueの時にisClearをtrueに設定するロジックの追加
+3. Phaseの修正
+   - 各フェーズに対応するConditionを設定
+   - ObserverパターンでConditionの状態を監視
 
-2. internal/domain/entity/condition_test.go の修正
-   - isClearの初期値テスト
-   - OnConditionSatisfiedでsatisfiedがtrueの時のisClearの変更テスト
-   - IsClearメソッドのテスト
+4. NewStateFacade()の修正
+```go
+func NewStateFacade() StateFacade {
+    // Phase1 (1秒)
+    part1 := NewConditionPart(1, "Phase1_Part")
+    part1.ReferenceValueInt = 1
+    cond1 := NewCondition(1, "Phase1_Condition", condition.KindTime)
+    cond1.AddPart(part1)
+    phase1 := NewPhase("PHASE1", 1, cond1)
 
-### 3. Phaseの実装
-1. internal/domain/entity/phase.go の修正
-   - structにisClearフィールドを追加
-   - NewPhaseでisClearをfalseで初期化
-   - IsClearメソッドの追加
-   - OnConditionSatisfiedでsatisfiedがtrueの時にisClearをtrueに設定するロジックの追加
+    // Phase2 (2秒)
+    part2 := NewConditionPart(2, "Phase2_Part")
+    part2.ReferenceValueInt = 2
+    cond2 := NewCondition(2, "Phase2_Condition", condition.KindTime)
+    cond2.AddPart(part2)
+    phase2 := NewPhase("PHASE2", 2, cond2)
 
-2. internal/domain/entity/phase_test.go の修正
-   - isClearの初期値テスト
-   - OnConditionSatisfiedでsatisfiedがtrueの時のisClearの変更テスト
-   - IsClearメソッドのテスト
+    // Phase3 (3秒)
+    part3 := NewConditionPart(3, "Phase3_Part")
+    part3.ReferenceValueInt = 3
+    cond3 := NewCondition(3, "Phase3_Condition", condition.KindTime)
+    cond3.AddPart(part3)
+    phase3 := NewPhase("PHASE3", 3, cond3)
 
-## テスト計画
+    phases := entity.Phases{phase1, phase2, phase3}
+    controller := NewPhaseController(phases)
 
-### ConditionPartのテスト
-1. 初期状態でisClearがfalseであることを確認
-2. StateSatisfiedになった時にisClearがtrueになることを確認
-3. IsClearメソッドが正しい値を返すことを確認
+    return &stateFacadeImpl{
+        controller: controller,
+    }
+}
+```
 
-### Conditionのテスト
-1. 初期状態でisClearがfalseであることを確認
-2. OnConditionSatisfiedでsatisfiedがtrueの時にisClearがtrueになることを確認
-3. IsClearメソッドが正しい値を返すことを確認
+## 4. テスト計画
 
-### Phaseのテスト
-1. 初期状態でisClearがfalseであることを確認
-2. OnConditionSatisfiedでsatisfiedがtrueの時にisClearがtrueになることを確認
-3. IsClearメソッドが正しい値を返すことを確認
+1. ConditionPartのテスト
+   - 時間経過による状態変化の検証
+   - ReferenceValueIntの正しい設定確認
 
-## 実装の注意点
-- 各エンティティのisClearは一度trueになったら、falseに戻らない
-- テストは各状態遷移を確実にカバーする
-- 既存の機能に影響を与えないように注意する
+2. Conditionのテスト
+   - Time条件の評価検証
+   - 状態遷移の確認
 
-## 実装順序
-1. ConditionPart
-2. Condition
-3. Phase
+3. Phaseのテスト
+   - 時間経過による遷移の検証
+   - フェーズ間の連携確認
 
-この順序で実装することで、依存関係の低い方から順に実装を進めることができます。
+4. 統合テスト
+   - 全フェーズの順次実行確認
+   - タイミングの正確性検証
