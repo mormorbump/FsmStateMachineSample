@@ -15,7 +15,7 @@ body {
 h1 {
     text-align: center;
     color: #333;
-    margin-bottom: 30px;
+    /*margin-bottom: 30px;*/
 }
 
 /* 状態表示のスタイル */
@@ -28,22 +28,84 @@ h1 {
 
 .current-state {
     text-align: center;
-    margin-bottom: 5px;
+    margin-bottom: 20px;
+}
+
+.info-wrapper {
+    display: flex;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.info-wrapper > div {
+    flex: 1;
+}
+
+.info-wrapper h2 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #333;
+    font-size: 1.2em;
+    text-align: left;
 }
 
 .state-display {
-    font-size: 24px;
+    font-size: 20px;
     font-weight: bold;
-    color: #2196F3;
-    padding: 10px;
-    border: 2px solid #2196F3;
+    padding: 8px;
+    border: 2px solid;
     border-radius: 4px;
     display: inline-block;
 }
 
+.state-display.is-clear {
+    color: #4CAF50;
+    border-color: #4CAF50;
+}
+
+.state-display.not-clear {
+    color: #F44336;
+    border-color: #F44336;
+}
+
+.phase-details {
+    /*margin-top: 20px;*/
+    padding: 15px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.phase-info {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.phase-info-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.phase-info-label {
+    font-weight: bold;
+    color: #666;
+}
+
+.phase-info-value {
+    color: #333;
+}
+
+.phase-time {
+    font-family: monospace;
+    color: #666;
+}
+
 /* 状態遷移図のスタイル */
 .state-diagram {
-    margin: 30px 0;
+    /*margin: 30px 0;*/
     overflow: hidden;
 }
 
@@ -250,6 +312,16 @@ h1 {
         padding: 10px;
     }
 
+    .info-wrapper {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .phase-details,
+    .conditions-container {
+        width: 100%;
+    }
+
     .control-btn {
         margin: 5px;
         padding: 8px 16px;
@@ -257,7 +329,7 @@ h1 {
     }
 
     .state-display {
-        font-size: 20px;
+        font-size: 16px;
     }
 
     .auto-transition-controls {
@@ -290,7 +362,7 @@ h1 {
 /* 条件表示のスタイル */
 .conditions-container {
     /* margin-top: 30px; */
-    padding: 20px;
+    padding: 10px;
     background-color: white;
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);

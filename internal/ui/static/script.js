@@ -241,16 +241,40 @@ class StateManager {
         });
     }
 
+    formatTime(timeStr) {
+        if (!timeStr) return '-';
+        const date = new Date(timeStr);
+        return date.toLocaleString('ja-JP', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    }
+
     updateState(data) {
         console.log('状態更新処理:', {
             currentState: this.currentState,
-            newState: data.state
+            newState: data.state,
+            phase: data.phase
         });
 
         // 現在の状態表示を更新
         const currentStateElement = document.getElementById('current-state');
         currentStateElement.textContent = data.state;
+        currentStateElement.className = `state-display ${data.phase?.is_clear ? 'is-clear' : 'not-clear'}`;
         this.currentState = data.state;
+
+        // フェーズの詳細情報を更新
+        if (data.phase) {
+            document.getElementById('phase-name').textContent = data.phase.name || '-';
+            document.getElementById('phase-description').textContent = data.phase.description || '-';
+            document.getElementById('phase-order').textContent = data.phase.order || '-';
+            document.getElementById('phase-start-time').textContent = this.formatTime(data.phase.start_time);
+            document.getElementById('phase-finish-time').textContent = this.formatTime(data.phase.finish_time);
+        }
 
         // 状態図の更新
         this.updateStateDiagram(data.state);

@@ -12,14 +12,42 @@
         
         <div class="state-container">
             <div class="current-state">
-                <h2>現在の状態</h2>
+                <h2>現在のPhase</h2>
                 <div id="current-state" class="state-display">ready</div>
             </div>
 
-            <div class="conditions-container">
-                <h2>条件の状態</h2>
-                <div id="conditions-list" class="conditions-list">
-                    <!-- 条件リストがここに動的に追加されます -->
+            <div class="info-wrapper">
+                <div class="phase-details">
+                    <h2>Phase詳細</h2>
+                    <div class="phase-info">
+                        <div class="phase-info-item">
+                            <span class="phase-info-label">名前:</span>
+                            <span id="phase-name" class="phase-info-value">-</span>
+                        </div>
+                        <div class="phase-info-item">
+                            <span class="phase-info-label">説明:</span>
+                            <span id="phase-description" class="phase-info-value">-</span>
+                        </div>
+                        <div class="phase-info-item">
+                            <span class="phase-info-label">順序:</span>
+                            <span id="phase-order" class="phase-info-value">-</span>
+                        </div>
+                        <div class="phase-info-item">
+                            <span class="phase-info-label">開始時間:</span>
+                            <span id="phase-start-time" class="phase-info-value phase-time">-</span>
+                        </div>
+                        <div class="phase-info-item">
+                            <span class="phase-info-label">終了時間:</span>
+                            <span id="phase-finish-time" class="phase-info-value phase-time">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="conditions-container">
+                    <h2>条件の状態</h2>
+                    <div id="conditions-list" class="conditions-list">
+                        <!-- 条件リストがここに動的に追加されます -->
+                    </div>
                 </div>
             </div>
 

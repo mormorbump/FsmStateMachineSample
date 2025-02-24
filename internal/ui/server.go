@@ -8,6 +8,7 @@ import (
 	logger "state_sample/internal/lib"
 	"state_sample/internal/usecase"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -109,17 +110,38 @@ func (s *StateServer) OnStateChanged(state string) {
 	}
 
 	update := struct {
-		Type       string              `json:"type"`
-		State      string              `json:"state"`
-		Info       *core.GameStateInfo `json:"info,omitempty"`
-		Phase      string              `json:"phase"`
-		Message    string              `json:"message,omitempty"`
-		Conditions []ConditionInfo     `json:"conditions"`
+		Type  string              `json:"type"`
+		State string              `json:"state"`
+		Info  *core.GameStateInfo `json:"info,omitempty"`
+		Phase struct {
+			Name        string     `json:"name"`
+			Description string     `json:"description"`
+			Order       int        `json:"order"`
+			IsClear     bool       `json:"is_clear"`
+			StartTime   *time.Time `json:"start_time"`
+			FinishTime  *time.Time `json:"finish_time"`
+		} `json:"phase"`
+		Message    string          `json:"message,omitempty"`
+		Conditions []ConditionInfo `json:"conditions"`
 	}{
-		Type:       "state_change",
-		State:      state,
-		Info:       stateInfo,
-		Phase:      currentPhase.Name,
+		Type:  "state_change",
+		State: state,
+		Info:  stateInfo,
+		Phase: struct {
+			Name        string     `json:"name"`
+			Description string     `json:"description"`
+			Order       int        `json:"order"`
+			IsClear     bool       `json:"is_clear"`
+			StartTime   *time.Time `json:"start_time"`
+			FinishTime  *time.Time `json:"finish_time"`
+		}{
+			Name:        currentPhase.Name,
+			Description: currentPhase.Description,
+			Order:       currentPhase.Order,
+			IsClear:     currentPhase.IsClear,
+			StartTime:   currentPhase.StartTime,
+			FinishTime:  currentPhase.FinishTime,
+		},
 		Message:    fmt.Sprintf("order: %v, message: %v", currentPhase.Order, stateInfo.Message),
 		Conditions: conditions,
 	}
