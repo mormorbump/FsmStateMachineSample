@@ -15,7 +15,6 @@ body {
 h1 {
     text-align: center;
     color: #333;
-    /*margin-bottom: 30px;*/
 }
 
 /* 状態表示のスタイル */
@@ -69,7 +68,6 @@ h1 {
 }
 
 .phase-details {
-    /*margin-top: 20px;*/
     padding: 15px;
     background-color: white;
     border-radius: 8px;
@@ -105,7 +103,6 @@ h1 {
 
 /* 状態遷移図のスタイル */
 .state-diagram {
-    /*margin: 30px 0;*/
     overflow: hidden;
 }
 
@@ -197,8 +194,7 @@ h1 {
     padding-top: 20px;
     border-top: 1px solid #eee;
     display: flex;
-    flex-direction: column;
-    align-items: center;
+    justify-content: center;
     gap: 15px;
 }
 
@@ -231,6 +227,56 @@ h1 {
     font-size: 14px;
     color: #666;
     animation: pulse 2s infinite;
+    text-align: center;
+}
+
+/* カウンター条件のスタイル */
+.counter-controls {
+    margin-top: 10px;
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    border: 1px solid #dee2e6;
+}
+
+.counter-value {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    font-size: 1.1em;
+    color: #495057;
+}
+
+.current-value {
+    font-weight: bold;
+    color: #0d6efd;
+}
+
+.target-value {
+    color: #198754;
+}
+
+.increment-btn {
+    width: 100%;
+    padding: 8px 16px;
+    background-color: #0d6efd;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: all 0.2s ease;
+}
+
+.increment-btn:hover:not(:disabled) {
+    background-color: #0b5ed7;
+    transform: translateY(-1px);
+}
+
+.increment-btn:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
 }
 
 /* 状態メッセージのスタイル */
@@ -269,18 +315,6 @@ h1 {
     font-weight: bold;
 }
 
-@keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.6; }
-    100% { opacity: 1; }
-}
-
-@keyframes processing {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.02); }
-    100% { transform: scale(1); }
-}
-
 /* ステータスメッセージのスタイル */
 .status-container {
     margin-top: 30px;
@@ -304,6 +338,19 @@ h1 {
     background-color: #e8f5e9;
     color: #2e7d32;
     border: 1px solid #a5d6a7;
+}
+
+/* アニメーション */
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.6; }
+    100% { opacity: 1; }
+}
+
+@keyframes processing {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+    100% { transform: scale(1); }
 }
 
 /* レスポンシブデザイン */
@@ -333,6 +380,7 @@ h1 {
     }
 
     .auto-transition-controls {
+        flex-direction: column;
         gap: 10px;
     }
 
@@ -344,24 +392,10 @@ h1 {
         font-size: 14px;
         padding: 8px 16px;
     }
-
-    .conditions-container {
-        padding: 10px;
-    }
-
-    .condition-item {
-        padding: 10px;
-    }
-
-    .part-item {
-        padding: 6px;
-        font-size: 12px;
-    }
 }
 
 /* 条件表示のスタイル */
 .conditions-container {
-    /* margin-top: 30px; */
     padding: 10px;
     background-color: white;
     border-radius: 8px;

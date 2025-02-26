@@ -1,19 +1,6 @@
-package core
+package value
 
-const (
-	StateReady  = "ready"
-	StateActive = "active"
-	StateNext   = "next"
-	StateFinish = "finish"
-)
-
-const (
-	EventActivate = "activate"
-	EventNext     = "next"
-	EventFinish   = "finish"
-	EventReset    = "reset"
-)
-
+// GameStateInfo はゲーム状態の情報を表す構造体です
 type GameStateInfo struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
@@ -21,6 +8,7 @@ type GameStateInfo struct {
 	Message     string   `json:"message,omitempty"`
 }
 
+// GetGameStateInfo は状態名に対応するGameStateInfoを返します
 func GetGameStateInfo(state string) *GameStateInfo {
 	stateInfoMap := map[string]*GameStateInfo{
 		StateReady: {

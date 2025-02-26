@@ -41,7 +41,6 @@ class StateManager {
     }
 
     setupEventListeners() {
-        // 状態遷移ボタンのイベントリスナー
         document.getElementById('activate-btn').addEventListener('click', () => {
             console.log('イベント送信: activate');
             this.controlAutoTransition('activate');
@@ -59,7 +58,6 @@ class StateManager {
     }
 
     setupAutoTransitionControls() {
-        // 自動遷移制御ボタンの追加
         const controlsDiv = document.querySelector('.controls');
         const autoTransitionDiv = document.createElement('div');
         autoTransitionDiv.className = 'auto-transition-controls';
@@ -72,7 +70,6 @@ class StateManager {
         `;
         controlsDiv.appendChild(autoTransitionDiv);
 
-        // 自動遷移ボタンのイベントリスナー
         document.getElementById('start-auto').addEventListener('click', () => {
             console.log('自動遷移開始リクエスト');
             this.controlAutoTransition('start');
@@ -96,11 +93,6 @@ class StateManager {
                 method: 'POST'
             });
 
-            console.log('APIレスポンス:', {
-                status: response.status,
-                statusText: response.statusText
-            });
-
             if (response.ok) {
                 console.log(`自動遷移${action}成功`);
                 this.showStatus(`自動遷移${action === 'start' ? '開始' : '停止'}`, 'success');
@@ -116,32 +108,27 @@ class StateManager {
         }
     }
 
-    updateAutoTransitionStatus(isRunning) {
-        console.log('自動遷移状態更新:', isRunning);
-        const startBtn = document.getElementById('start-auto');
-        const stopBtn = document.getElementById('stop-auto');
-        const resetBtn = document.getElementById('reset-btn');
-        
-        if (isRunning) {
-            startBtn.disabled = true;
-            stopBtn.disabled = false;
-            resetBtn.disabled = true;
-        } else {
-            startBtn.disabled = false;
-            stopBtn.disabled = true;
-            resetBtn.disabled = false;
-        }
-    }
+    async handleCounterIncrement(conditionId, partId, increment = 1) {
+        try {
+            const response = await fetch(`/api/condition/${conditionId}/part/${partId}/evaluate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ increment })
+            });
 
-    sendEvent(event) {
-        console.log('WebSocketイベント送信:', event);
-        if (this.ws.readyState === WebSocket.OPEN) {
-            const message = JSON.stringify({ event });
-            console.log('送信メッセージ:', message);
-            this.ws.send(message);
-        } else {
-            console.error('WebSocket接続エラー - 現在の状態:', this.ws.readyState);
-            this.showStatus('サーバーに接続できません', 'error');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            this.showStatus(`カウンター更新: ${result.current_value}`, 'success');
+            return result;
+        } catch (error) {
+            console.error('カウンター更新エラー:', error);
+            this.showStatus(`カウンター更新エラー: ${error.message}`, 'error');
+            throw error;
         }
     }
 
@@ -211,11 +198,47 @@ class StateManager {
                     
                     const partBasic = document.createElement('div');
                     partBasic.className = 'part-basic';
+
+                    // 基本情報の表示
                     partBasic.innerHTML = `
                         <strong>${part.label}</strong> (Clear: ${part.is_clear})<br>
                         State: <span class="state-${part.state}">${part.state}</span><br>
                         Operator: ${part.comparison_operator}
                     `;
+
+                    // カウンター条件の場合、特別なUIを追加
+                    if (condition.kind === 2) { // KindCounter = 2
+                        const counterControls = document.createElement('div');
+                        counterControls.className = 'counter-controls';
+                        counterControls.innerHTML = `
+                            <div class="counter-value">
+                                現在値: <span class="current-value">0</span> / 
+                                目標値: <span class="target-value">${part.reference_value_int}</span>
+                            </div>
+                            <button class="increment-btn" data-condition-id="${condition.id}" data-part-id="${part.id}">
+                                カウントアップ
+                            </button>
+                        `;
+
+                        // カウントアップボタンのイベントリスナーを追加
+                        const incrementBtn = counterControls.querySelector('.increment-btn');
+                        incrementBtn.addEventListener('click', async () => {
+                            try {
+                                const result = await this.handleCounterIncrement(condition.id, part.id);
+                                const currentValueSpan = counterControls.querySelector('.current-value');
+                                currentValueSpan.textContent = result.current_value;
+                                
+                                if (result.is_satisfied) {
+                                    incrementBtn.disabled = true;
+                                    this.showStatus('条件を満たしました！', 'success');
+                                }
+                            } catch (error) {
+                                console.error('カウンター更新エラー:', error);
+                            }
+                        });
+
+                        partBasic.appendChild(counterControls);
+                    }
                     
                     const partDetails = document.createElement('div');
                     partDetails.className = 'part-details';
@@ -241,6 +264,23 @@ class StateManager {
         });
     }
 
+    updateAutoTransitionStatus(isRunning) {
+        console.log('自動遷移状態更新:', isRunning);
+        const startBtn = document.getElementById('start-auto');
+        const stopBtn = document.getElementById('stop-auto');
+        const resetBtn = document.getElementById('reset-btn');
+        
+        if (isRunning) {
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            resetBtn.disabled = true;
+        } else {
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            resetBtn.disabled = false;
+        }
+    }
+
     formatTime(timeStr) {
         if (!timeStr) return '-';
         const date = new Date(timeStr);
@@ -261,13 +301,11 @@ class StateManager {
             phase: data.phase
         });
 
-        // 現在の状態表示を更新
         const currentStateElement = document.getElementById('current-state');
         currentStateElement.textContent = data.state;
         currentStateElement.className = `state-display ${data.phase?.is_clear ? 'is-clear' : 'not-clear'}`;
         this.currentState = data.state;
 
-        // フェーズの詳細情報を更新
         if (data.phase) {
             document.getElementById('phase-name').textContent = data.phase.name || '-';
             document.getElementById('phase-description').textContent = data.phase.description || '-';
@@ -276,13 +314,9 @@ class StateManager {
             document.getElementById('phase-finish-time').textContent = this.formatTime(data.phase.finish_time);
         }
 
-        // 状態図の更新
         this.updateStateDiagram(data.state);
-
-        // ボタンの有効/無効を更新
         this.updateButtons(data.state);
 
-        // 完了状態の場合、自動遷移を停止
         if (data.state === 'finish') {
             console.log('完了状態検出 - 自動遷移停止');
             this.updateAutoTransitionStatus(false);
@@ -315,7 +349,6 @@ class StateManager {
         console.log('カウントダウン開始:', nextTransition);
         const nextTransitionElement = document.getElementById('next-transition');
         
-        // 既存のカウントダウンをクリア
         if (this.countdownInterval) {
             clearInterval(this.countdownInterval);
         }
@@ -338,23 +371,19 @@ class StateManager {
 
     updateStateDiagram(newState) {
         console.log('状態図更新:', newState);
-        // 全ての状態をリセット
         document.querySelectorAll('.state').forEach(state => {
             state.classList.remove('active');
         });
 
-        // 全ての遷移をリセット
         document.querySelectorAll('.transition').forEach(transition => {
             transition.classList.remove('active');
         });
 
-        // 現在の状態をアクティブに
         const currentStateElement = document.querySelector(`.state[data-state="${newState}"]`);
         if (currentStateElement) {
             currentStateElement.classList.add('active');
         }
 
-        // 可能な遷移をハイライト
         this.highlightPossibleTransitions(newState);
     }
 
@@ -378,7 +407,6 @@ class StateManager {
 
     updateButtons(state) {
         console.log('ボタン状態更新:', state);
-        // ボタンの有効/無効を状態に応じて更新
         const buttons = {
             'activate-btn': state === 'ready',
             'next-btn': state === 'active',

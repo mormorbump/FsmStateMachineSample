@@ -1,10 +1,10 @@
-package state
+package entity
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"state_sample/internal/domain/core"
+	"state_sample/internal/domain/service"
 	"state_sample/internal/domain/value"
 	logger "state_sample/internal/lib"
 	"sync"
@@ -16,41 +16,39 @@ import (
 
 // ConditionPart は条件の部分的な評価を表す構造体です
 type ConditionPart struct {
-	ID                     core.ConditionPartID
-	Label                  string
-	ComparisonOperator     core.ComparisonOperator
-	IsClear                bool
-	TargetEntityType       string
-	TargetEntityID         int64
-	ReferenceValueInt      int64
-	ReferenceValueFloat    float64
-	ReferenceValueString   string
-	MinValue               int64
-	MaxValue               int64
-	Priority               int32
-	StartTime              *time.Time
-	FinishTime             *time.Time
-	fsm                    *fsm.FSM
-	*core.StateSubjectImpl // Subject実装
-	*ConditionPartSubjectImpl
-	mu  sync.RWMutex
-	log *zap.Logger
+	ID                   value.ConditionPartID
+	Label                string
+	ComparisonOperator   value.ComparisonOperator
+	IsClear              bool
+	TargetEntityType     string
+	TargetEntityID       int64
+	ReferenceValueInt    int64
+	ReferenceValueFloat  float64
+	ReferenceValueString string
+	MinValue             int64
+	MaxValue             int64
+	Priority             int32
+	StartTime            *time.Time
+	FinishTime           *time.Time
+	fsm                  *fsm.FSM
+	mu                   sync.RWMutex
+	log                  *zap.Logger
 
-	strategy PartStrategy
+	strategy      service.PartStrategy
+	partObservers []service.ConditionPartObserver
 }
 
 // NewConditionPart は新しいConditionPartインスタンスを作成します
-func NewConditionPart(id core.ConditionPartID, label string) *ConditionPart {
+func NewConditionPart(id value.ConditionPartID, label string) *ConditionPart {
 	log := logger.DefaultLogger()
 	p := &ConditionPart{
-		ID:                       id,
-		Label:                    label,
-		StateSubjectImpl:         core.NewStateSubjectImpl(),
-		ConditionPartSubjectImpl: NewConditionPartSubjectImpl(),
-		IsClear:                  false,
-		StartTime:                nil,
-		FinishTime:               nil,
-		log:                      log,
+		ID:            id,
+		Label:         label,
+		partObservers: make([]service.ConditionPartObserver, 0),
+		IsClear:       false,
+		StartTime:     nil,
+		FinishTime:    nil,
+		log:           log,
 	}
 
 	callbacks := fsm.Callbacks{
@@ -81,7 +79,6 @@ func NewConditionPart(id core.ConditionPartID, label string) *ConditionPart {
 					p.log.Error("failed to cleanup strategy", zap.Error(err))
 				}
 			}
-			p.NotifyPartSatisfied(p.ID)
 		},
 		"enter_" + value.StateReady: func(ctx context.Context, e *fsm.Event) {
 			p.IsClear = false
@@ -104,8 +101,8 @@ func NewConditionPart(id core.ConditionPartID, label string) *ConditionPart {
 		value.StateReady,
 		fsm.Events{
 			{Name: value.EventActivate, Src: []string{value.StateReady}, Dst: value.StateUnsatisfied},
-			{Name: value.EventProcess, Src: []string{value.StateUnsatisfied}, Dst: value.StateProcessing},
-			{Name: value.EventComplete, Src: []string{value.StateProcessing}, Dst: value.StateSatisfied},
+			{Name: value.EventProcess, Src: []string{value.StateUnsatisfied, value.StateProcessing}, Dst: value.StateProcessing},
+			{Name: value.EventComplete, Src: []string{value.StateProcessing, value.StateUnsatisfied}, Dst: value.StateSatisfied},
 			{Name: value.EventTimeout, Src: []string{value.StateProcessing, value.StateUnsatisfied}, Dst: value.StateSatisfied},
 			{Name: value.EventRevert, Src: []string{value.StateProcessing}, Dst: value.StateUnsatisfied},
 			{Name: value.EventReset, Src: []string{value.StateUnsatisfied, value.StateProcessing, value.StateSatisfied}, Dst: value.StateReady},
@@ -120,7 +117,7 @@ func (p *ConditionPart) GetReferenceValueInt() int64 {
 	return p.ReferenceValueInt
 }
 
-func (p *ConditionPart) GetComparisonOperator() core.ComparisonOperator {
+func (p *ConditionPart) GetComparisonOperator() value.ComparisonOperator {
 	return p.ComparisonOperator
 }
 
@@ -132,18 +129,32 @@ func (p *ConditionPart) GetMinValue() int64 {
 	return p.MinValue
 }
 
-func (p *ConditionPart) OnTimeTicked() {
-	p.Timeout(context.Background())
+func (p *ConditionPart) IsSatisfied() bool {
+	return p.fsm.Is(value.StateSatisfied)
+}
+
+func (p *ConditionPart) GetCurrentValue() interface{} {
+	return p.strategy.GetCurrentValue()
+}
+
+func (p *ConditionPart) OnUpdated(event string) {
+	switch {
+	case event == value.EventTimeout:
+		p.Timeout(context.Background())
+	case event == value.EventComplete:
+		p.Complete(context.Background())
+	}
+	p.NotifyPartChanged()
 }
 
 // Validate は条件パーツの妥当性を検証します
 func (p *ConditionPart) Validate() error {
-	if p.ComparisonOperator == core.ComparisonOperatorUnspecified {
+	if p.ComparisonOperator == value.ComparisonOperatorUnspecified {
 		return errors.New("comparison operator must be specified")
 	}
 
 	// 比較演算子がBetweenの場合、MinValueとMaxValueが必要
-	if p.ComparisonOperator == core.ComparisonOperatorBetween {
+	if p.ComparisonOperator == value.ComparisonOperatorBetween {
 		if p.MinValue >= p.MaxValue {
 			return errors.New("min_value must be less than max_value")
 		}
@@ -161,6 +172,7 @@ func (p *ConditionPart) Activate(ctx context.Context) error {
 }
 
 func (p *ConditionPart) Process(ctx context.Context, increment int64) error {
+	p.log.Debug("Part Process")
 	// 複数人から呼ばれる部分なのでmutex
 	if p.strategy != nil {
 		if err := p.strategy.Evaluate(ctx, p, increment); err != nil {
@@ -218,7 +230,7 @@ func (p *ConditionPart) Reset(ctx context.Context) error {
 	return p.fsm.Event(ctx, value.EventReset)
 }
 
-func (p *ConditionPart) SetStrategy(strategy PartStrategy) error {
+func (p *ConditionPart) SetStrategy(strategy service.PartStrategy) error {
 	if p.strategy != nil {
 		if err := p.strategy.Cleanup(); err != nil {
 			return fmt.Errorf("failed to cleanup old strategy: %w", err)
@@ -230,4 +242,41 @@ func (p *ConditionPart) SetStrategy(strategy PartStrategy) error {
 	}
 	p.strategy = strategy
 	return nil
+}
+
+// AddConditionPartObserver オブザーバーを追加
+func (p *ConditionPart) AddConditionPartObserver(observer service.ConditionPartObserver) {
+	if observer == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.partObservers = append(p.partObservers, observer)
+}
+
+// RemoveConditionPartObserver オブザーバーを削除
+func (p *ConditionPart) RemoveConditionPartObserver(observer service.ConditionPartObserver) {
+	if observer == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for i, obs := range p.partObservers {
+		if obs == observer {
+			p.partObservers = append(p.partObservers[:i], p.partObservers[i+1:]...)
+			break
+		}
+	}
+}
+
+// NotifyPartChanged 状態変更を通知
+func (p *ConditionPart) NotifyPartChanged() {
+	p.mu.RLock()
+	observers := make([]service.ConditionPartObserver, len(p.partObservers))
+	copy(observers, p.partObservers)
+	p.mu.RUnlock()
+
+	for _, observer := range observers {
+		observer.OnConditionPartChanged(p)
+	}
 }

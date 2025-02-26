@@ -1,10 +1,10 @@
-package state
+package entity
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"state_sample/internal/domain/core"
+	"state_sample/internal/domain/service"
 	"state_sample/internal/domain/value"
 	logger "state_sample/internal/lib"
 	"sync"
@@ -16,39 +16,38 @@ import (
 
 // Condition は状態遷移の条件を表す構造体です
 type Condition struct {
-	ID                     core.ConditionID
-	Label                  string
-	Kind                   core.ConditionKind
-	Parts                  map[core.ConditionPartID]*ConditionPart
-	Name                   string
-	Description            string
-	IsClear                bool
-	StartTime              *time.Time
-	FinishTime             *time.Time
-	fsm                    *fsm.FSM
-	*core.StateSubjectImpl // Subject実装
-	*ConditionSubjectImpl  // Condition Subject実装
-	mu                     sync.RWMutex
-	log                    *zap.Logger
-
-	satisfiedParts map[core.ConditionPartID]bool
+	ID                value.ConditionID
+	Label             string
+	Kind              value.ConditionKind
+	Parts             map[value.ConditionPartID]*ConditionPart
+	Name              string
+	Description       string
+	IsClear           bool
+	StartTime         *time.Time
+	FinishTime        *time.Time
+	fsm               *fsm.FSM
+	stateObservers    []service.StateObserver
+	condObservers     []service.ConditionObserver
+	mu                sync.RWMutex
+	log               *zap.Logger
+	satisfiedParts    map[value.ConditionPartID]bool
 }
 
 // NewCondition は新しいConditionインスタンスを作成します
-func NewCondition(id core.ConditionID, label string, kind core.ConditionKind) *Condition {
+func NewCondition(id value.ConditionID, label string, kind value.ConditionKind) *Condition {
 	log := logger.DefaultLogger()
 	c := &Condition{
-		ID:                   id,
-		Label:                label,
-		Kind:                 kind,
-		Parts:                make(map[core.ConditionPartID]*ConditionPart),
-		StateSubjectImpl:     core.NewStateSubjectImpl(),
-		ConditionSubjectImpl: NewConditionSubjectImpl(),
-		satisfiedParts:       make(map[core.ConditionPartID]bool),
-		IsClear:              false,
-		StartTime:            nil,
-		FinishTime:           nil,
-		log:                  log,
+		ID:             id,
+		Label:          label,
+		Kind:           kind,
+		Parts:          make(map[value.ConditionPartID]*ConditionPart),
+		stateObservers: make([]service.StateObserver, 0),
+		condObservers:  make([]service.ConditionObserver, 0),
+		satisfiedParts: make(map[value.ConditionPartID]bool),
+		IsClear:        false,
+		StartTime:      nil,
+		FinishTime:     nil,
+		log:            log,
 	}
 
 	callbacks := fsm.Callbacks{
@@ -76,13 +75,13 @@ func NewCondition(id core.ConditionID, label string, kind core.ConditionKind) *C
 				zap.Int64("condition_id", int64(c.ID)))
 
 			c.IsClear = true
-			c.NotifyConditionSatisfied(c.ID)
+			c.NotifyConditionChanged(c)
 		},
 		"enter_" + value.StateReady: func(ctx context.Context, e *fsm.Event) {
 			c.IsClear = false
 			c.StartTime = nil
 			c.FinishTime = nil
-			c.satisfiedParts = make(map[core.ConditionPartID]bool)
+			c.satisfiedParts = make(map[value.ConditionPartID]bool)
 
 			c.log.Debug("Condition enter_ready: resetting time information",
 				zap.Int64("condition_id", int64(c.ID)))
@@ -94,6 +93,7 @@ func NewCondition(id core.ConditionID, label string, kind core.ConditionKind) *C
 			c.log.Debug("Condition state transition",
 				zap.String("from", e.Src),
 				zap.String("to", e.Dst))
+			c.NotifyStateChanged(e.Dst)
 		},
 	}
 
@@ -111,15 +111,34 @@ func NewCondition(id core.ConditionID, label string, kind core.ConditionKind) *C
 	return c
 }
 
-func (c *Condition) OnPartSatisfied(partID core.ConditionPartID) {
+// GetParts は条件パーツのスライスを返します
+func (c *Condition) GetParts() []*ConditionPart {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	parts := make([]*ConditionPart, 0, len(c.Parts))
+	for _, part := range c.Parts {
+		parts = append(parts, part)
+	}
+	return parts
+}
+
+// OnConditionPartChanged は条件パーツの状態が変更された時に呼び出されます
+func (c *Condition) OnConditionPartChanged(part interface{}) {
+	condPart, ok := part.(*ConditionPart)
+	if !ok {
+		c.log.Error("Invalid part type in OnConditionPartChanged")
+		return
+	}
+
 	c.mu.Lock()
-	c.satisfiedParts[partID] = true
+	c.satisfiedParts[condPart.ID] = true
 	satisfied := c.checkAllPartsSatisfied()
 	c.mu.Unlock()
 
-	c.log.Debug("Condition: OnPartSatisfied",
+	c.log.Debug("Condition: OnConditionPartChanged",
 		zap.Int64("condition_id", int64(c.ID)),
-		zap.Int64("part_id", int64(partID)),
+		zap.Int64("part_id", int64(condPart.ID)),
 		zap.Bool("satisfied", satisfied),
 	)
 	if satisfied {
@@ -127,12 +146,13 @@ func (c *Condition) OnPartSatisfied(partID core.ConditionPartID) {
 	}
 }
 
+// checkAllPartsSatisfied は全ての条件パーツが満たされているかチェックします
 func (c *Condition) checkAllPartsSatisfied() bool {
 	return len(c.satisfiedParts) == len(c.Parts)
 }
 
+// Validate は条件の妥当性を検証します
 func (c *Condition) Validate() error {
-
 	if len(c.Parts) == 0 {
 		return errors.New("condition must have at least one part")
 	}
@@ -147,26 +167,31 @@ func (c *Condition) Validate() error {
 	return nil
 }
 
+// CurrentState は現在の状態を返します
 func (c *Condition) CurrentState() string {
 	return c.fsm.Current()
 }
 
+// Activate は条件をアクティブにします
 func (c *Condition) Activate(ctx context.Context) error {
 	return c.fsm.Event(ctx, value.EventActivate)
 }
 
+// Complete は条件を完了状態にします
 func (c *Condition) Complete(ctx context.Context) error {
 	return c.fsm.Event(ctx, value.EventComplete)
 }
 
+// Revert は条件を未達成状態に戻します
 func (c *Condition) Revert(ctx context.Context) error {
 	c.mu.Lock()
-	c.satisfiedParts = make(map[core.ConditionPartID]bool)
+	c.satisfiedParts = make(map[value.ConditionPartID]bool)
 	c.mu.Unlock()
 
 	return c.fsm.Event(ctx, value.EventRevert)
 }
 
+// Reset は条件をリセットします
 func (c *Condition) Reset(ctx context.Context) error {
 	// ログ出力用の時間情報を準備
 	var startTimeStr, finishTimeStr string
@@ -201,6 +226,7 @@ func (c *Condition) Reset(ctx context.Context) error {
 	return c.fsm.Event(ctx, value.EventReset)
 }
 
+// AddPart は条件パーツを追加します
 func (c *Condition) AddPart(part *ConditionPart) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -209,7 +235,8 @@ func (c *Condition) AddPart(part *ConditionPart) {
 	c.Parts[part.ID] = part
 }
 
-func (c *Condition) InitializePartStrategies(factory *DefaultConditionStrategyFactory) error {
+// InitializePartStrategies は条件パーツの戦略を初期化します
+func (c *Condition) InitializePartStrategies(factory service.StrategyFactory) error {
 	strategy, err := factory.CreateStrategy(c.Kind)
 	if err != nil {
 		return fmt.Errorf("failed to create strategy %w", err)
@@ -222,4 +249,78 @@ func (c *Condition) InitializePartStrategies(factory *DefaultConditionStrategyFa
 	}
 
 	return nil
+}
+
+// AddObserver オブザーバーを追加します
+func (c *Condition) AddObserver(observer service.StateObserver) {
+	if observer == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.stateObservers = append(c.stateObservers, observer)
+}
+
+// RemoveObserver オブザーバーを削除します
+func (c *Condition) RemoveObserver(observer service.StateObserver) {
+	if observer == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i, obs := range c.stateObservers {
+		if obs == observer {
+			c.stateObservers = append(c.stateObservers[:i], c.stateObservers[i+1:]...)
+			return
+		}
+	}
+}
+
+// NotifyStateChanged 状態変更を通知します
+func (c *Condition) NotifyStateChanged(state string) {
+	c.mu.RLock()
+	observers := make([]service.StateObserver, len(c.stateObservers))
+	copy(observers, c.stateObservers)
+	c.mu.RUnlock()
+
+	for _, observer := range observers {
+		observer.OnStateChanged(state)
+	}
+}
+
+// AddConditionObserver 条件オブザーバーを追加します
+func (c *Condition) AddConditionObserver(observer service.ConditionObserver) {
+	if observer == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.condObservers = append(c.condObservers, observer)
+}
+
+// RemoveConditionObserver 条件オブザーバーを削除します
+func (c *Condition) RemoveConditionObserver(observer service.ConditionObserver) {
+	if observer == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i, obs := range c.condObservers {
+		if obs == observer {
+			c.condObservers = append(c.condObservers[:i], c.condObservers[i+1:]...)
+			break
+		}
+	}
+}
+
+// NotifyConditionChanged 条件変更を通知します
+func (c *Condition) NotifyConditionChanged(condition interface{}) {
+	c.mu.RLock()
+	observers := make([]service.ConditionObserver, len(c.condObservers))
+	copy(observers, c.condObservers)
+	c.mu.RUnlock()
+	
+	for _, observer := range observers {
+		observer.OnConditionChanged(condition)
+	}
 }

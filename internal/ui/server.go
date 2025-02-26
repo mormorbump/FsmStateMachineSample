@@ -3,9 +3,10 @@ package ui
 import (
 	"fmt"
 	"net/http"
-	"state_sample/internal/domain/core"
+	"state_sample/internal/domain/entity"
+	"state_sample/internal/domain/value"
 	logger "state_sample/internal/lib"
-	"state_sample/internal/usecase"
+	"state_sample/internal/usecase/state"
 	"sync"
 	"time"
 
@@ -16,10 +17,10 @@ import (
 
 // ConditionInfo は条件の状態情報を表す構造体です
 type ConditionInfo struct {
-	ID          core.ConditionID    `json:"id"`
+	ID          value.ConditionID   `json:"id"`
 	Label       string              `json:"label"`
 	State       string              `json:"state"`
-	Kind        core.ConditionKind  `json:"kind"`
+	Kind        value.ConditionKind `json:"kind"`
 	IsClear     bool                `json:"is_clear"`
 	Description string              `json:"description"`
 	Parts       []ConditionPartInfo `json:"parts"`
@@ -27,29 +28,29 @@ type ConditionInfo struct {
 
 // ConditionPartInfo は条件パーツの状態情報を表す構造体です
 type ConditionPartInfo struct {
-	ID                   core.ConditionPartID    `json:"id"`
-	Label                string                  `json:"label"`
-	State                string                  `json:"state"`
-	ComparisonOperator   core.ComparisonOperator `json:"comparison_operator"`
-	IsClear              bool                    `json:"is_clear"`
-	TargetEntityType     string                  `json:"target_entity_type"`
-	TargetEntityID       int64                   `json:"target_entity_id"`
-	ReferenceValueInt    int64                   `json:"reference_value_int"`
-	ReferenceValueFloat  float64                 `json:"reference_value_float"`
-	ReferenceValueString string                  `json:"reference_value_string"`
-	MinValue             int64                   `json:"min_value"`
-	MaxValue             int64                   `json:"max_value"`
-	Priority             int32                   `json:"priority"`
+	ID                   value.ConditionPartID    `json:"id"`
+	Label                string                   `json:"label"`
+	State                string                   `json:"state"`
+	ComparisonOperator   value.ComparisonOperator `json:"comparison_operator"`
+	IsClear              bool                     `json:"is_clear"`
+	TargetEntityType     string                   `json:"target_entity_type"`
+	TargetEntityID       int64                    `json:"target_entity_id"`
+	ReferenceValueInt    int64                    `json:"reference_value_int"`
+	ReferenceValueFloat  float64                  `json:"reference_value_float"`
+	ReferenceValueString string                   `json:"reference_value_string"`
+	MinValue             int64                    `json:"min_value"`
+	MaxValue             int64                    `json:"max_value"`
+	Priority             int32                    `json:"priority"`
 }
 
 type StateServer struct {
-	stateFacade usecase.StateFacade
+	stateFacade state.StateFacade
 	clients     map[*websocket.Conn]bool
 	upgrader    websocket.Upgrader
 	mu          sync.RWMutex
 }
 
-func NewStateServer(facade usecase.StateFacade) *StateServer {
+func NewStateServer(facade state.StateFacade) *StateServer {
 	log := logger.DefaultLogger()
 	log.Debug("Creating new state server instance")
 	server := &StateServer{
@@ -62,7 +63,16 @@ func NewStateServer(facade usecase.StateFacade) *StateServer {
 		},
 	}
 
-	facade.GetController().AddObserver(server)
+	// オブザーバーとして登録
+	controller := facade.GetController()
+	log.Debug("Got controller from facade", zap.String("controller", fmt.Sprintf("%p", controller)))
+
+	controller.AddStateObserver(server)
+	log.Debug("Added StateServer as StateObserver", zap.String("server", fmt.Sprintf("%p", server)))
+
+	controller.AddConditionObserver(server)
+	controller.AddConditionPartObserver(server)
+
 	return server
 }
 
@@ -70,9 +80,59 @@ func (s *StateServer) OnStateChanged(state string) {
 	log := logger.DefaultLogger()
 	log.Debug("StateServer.OnStateChanged", zap.String("state", state))
 	currentPhase := s.stateFacade.GetCurrentPhase()
-	stateInfo := currentPhase.GetStateInfo()
 
-	// Conditionの情報を収集
+	// GameStateInfoの取得
+	stateInfo := s.getGameStateInfo(currentPhase)
+
+	update := s.EditResponse(state, currentPhase, stateInfo)
+	s.broadcastUpdate(update)
+}
+
+// GameStateInfo は状態情報を表す構造体です
+type GameStateInfo struct {
+	CurrentState string `json:"current_state"`
+	Message      string `json:"message"`
+}
+
+// getGameStateInfo はGameStateInfoを取得します
+func (s *StateServer) getGameStateInfo(phase *entity.Phase) *GameStateInfo {
+	if phase == nil {
+		return &GameStateInfo{
+			CurrentState: value.StateReady,
+			Message:      "No active phase",
+		}
+	}
+
+	return &GameStateInfo{
+		CurrentState: phase.CurrentState(),
+		Message:      fmt.Sprintf("Phase: %s, Order: %d", phase.Name, phase.Order),
+	}
+}
+
+type Response struct {
+	Type  string         `json:"type"`
+	State string         `json:"state"`
+	Info  *GameStateInfo `json:"info,omitempty"`
+	Phase struct {
+		Name        string     `json:"name"`
+		Description string     `json:"description"`
+		Order       int        `json:"order"`
+		IsClear     bool       `json:"is_clear"`
+		StartTime   *time.Time `json:"start_time"`
+		FinishTime  *time.Time `json:"finish_time"`
+	} `json:"phase"`
+	Message    string          `json:"message,omitempty"`
+	Conditions []ConditionInfo `json:"conditions"`
+}
+
+func (s *StateServer) EditResponse(stateName string, currentPhase *entity.Phase, stateInfo *GameStateInfo) Response {
+	var currentState string
+	if stateName == "" {
+		currentState = currentPhase.CurrentState()
+	} else {
+		currentState = stateName
+	}
+
 	conditions := make([]ConditionInfo, 0)
 	for _, condition := range currentPhase.GetConditions() {
 		condInfo := ConditionInfo{
@@ -85,8 +145,7 @@ func (s *StateServer) OnStateChanged(state string) {
 			Parts:       make([]ConditionPartInfo, 0),
 		}
 
-		// ConditionPartの情報を収集
-		for _, part := range condition.Parts {
+		for _, part := range condition.GetParts() {
 			partInfo := ConditionPartInfo{
 				ID:                   part.ID,
 				Label:                part.Label,
@@ -108,23 +167,9 @@ func (s *StateServer) OnStateChanged(state string) {
 		conditions = append(conditions, condInfo)
 	}
 
-	update := struct {
-		Type  string              `json:"type"`
-		State string              `json:"state"`
-		Info  *core.GameStateInfo `json:"info,omitempty"`
-		Phase struct {
-			Name        string     `json:"name"`
-			Description string     `json:"description"`
-			Order       int        `json:"order"`
-			IsClear     bool       `json:"is_clear"`
-			StartTime   *time.Time `json:"start_time"`
-			FinishTime  *time.Time `json:"finish_time"`
-		} `json:"phase"`
-		Message    string          `json:"message,omitempty"`
-		Conditions []ConditionInfo `json:"conditions"`
-	}{
+	update := Response{
 		Type:  "state_change",
-		State: state,
+		State: currentState,
 		Info:  stateInfo,
 		Phase: struct {
 			Name        string     `json:"name"`
@@ -144,6 +189,38 @@ func (s *StateServer) OnStateChanged(state string) {
 		Message:    fmt.Sprintf("order: %v, message: %v", currentPhase.Order, stateInfo.Message),
 		Conditions: conditions,
 	}
+	return update
+}
+
+func (s *StateServer) OnConditionChanged(condition interface{}) {
+	log := logger.DefaultLogger()
+	cond, ok := condition.(*entity.Condition)
+	if !ok {
+		log.Error("Invalid condition type in OnConditionChanged")
+		return
+	}
+
+	log.Debug("StateServer.OnConditionChanged", zap.Int64("conditionId", int64(cond.ID)))
+	currentPhase := s.stateFacade.GetCurrentPhase()
+	stateInfo := s.getGameStateInfo(currentPhase)
+
+	update := s.EditResponse(currentPhase.CurrentState(), currentPhase, stateInfo)
+	s.broadcastUpdate(update)
+}
+
+func (s *StateServer) OnConditionPartChanged(part interface{}) {
+	log := logger.DefaultLogger()
+	condPart, ok := part.(*entity.ConditionPart)
+	if !ok {
+		log.Error("Invalid part type in OnConditionPartChanged")
+		return
+	}
+
+	log.Debug("StateServer.OnConditionPartChanged", zap.Int64("partId", int64(condPart.ID)))
+	currentPhase := s.stateFacade.GetCurrentPhase()
+	stateInfo := s.getGameStateInfo(currentPhase)
+
+	update := s.EditResponse(currentPhase.CurrentState(), currentPhase, stateInfo)
 	s.broadcastUpdate(update)
 }
 
@@ -165,10 +242,10 @@ func (s *StateServer) broadcastUpdate(update interface{}) {
 	log.Debug("Broadcasting update to clients", zap.Any("update", update))
 	for client := range s.clients {
 		if err := client.WriteJSON(update); err != nil {
-			log.Error("Error sending message to client: %v", zap.Error(err))
+			log.Error("Error sending message to client", zap.Error(err))
 			err := client.Close()
 			if err != nil {
-				log.Error("Error closing client connection: %v", zap.Error(err))
+				log.Error("Error closing client connection", zap.Error(err))
 				return
 			}
 			delete(s.clients, client)
