@@ -210,9 +210,11 @@ class StateManager {
                     if (condition.kind === 2) { // KindCounter = 2
                         const counterControls = document.createElement('div');
                         counterControls.className = 'counter-controls';
+                        // サーバーから取得した現在値を表示するように修正
+                        const currentValue = part.current_value !== undefined ? part.current_value : 0;
                         counterControls.innerHTML = `
                             <div class="counter-value">
-                                現在値: <span class="current-value">0</span> / 
+                                現在値: <span class="current-value">${currentValue}</span> /
                                 目標値: <span class="target-value">${part.reference_value_int}</span>
                             </div>
                             <button class="increment-btn" data-condition-id="${condition.id}" data-part-id="${part.id}">

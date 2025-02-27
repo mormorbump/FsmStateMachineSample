@@ -41,6 +41,7 @@ type ConditionPartInfo struct {
 	MinValue             int64                    `json:"min_value"`
 	MaxValue             int64                    `json:"max_value"`
 	Priority             int32                    `json:"priority"`
+	CurrentValue         interface{}              `json:"current_value"`
 }
 
 type StateServer struct {
@@ -144,7 +145,6 @@ func (s *StateServer) EditResponse(stateName string, currentPhase *entity.Phase,
 			Description: condition.Description,
 			Parts:       make([]ConditionPartInfo, 0),
 		}
-
 		for _, part := range condition.GetParts() {
 			partInfo := ConditionPartInfo{
 				ID:                   part.ID,
@@ -160,8 +160,10 @@ func (s *StateServer) EditResponse(stateName string, currentPhase *entity.Phase,
 				MinValue:             part.MinValue,
 				MaxValue:             part.MaxValue,
 				Priority:             part.Priority,
+				CurrentValue:         part.GetCurrentValue(), // strategy経由で現在値を取得
 			}
 			condInfo.Parts = append(condInfo.Parts, partInfo)
+			// 重複して追加していた2回目のappendを削除
 		}
 
 		conditions = append(conditions, condInfo)

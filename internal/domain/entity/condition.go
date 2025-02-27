@@ -238,12 +238,14 @@ func (c *Condition) AddPart(part *ConditionPart) {
 
 // InitializePartStrategies は条件パーツの戦略を初期化します
 func (c *Condition) InitializePartStrategies(factory service.StrategyFactory) error {
-	strategy, err := factory.CreateStrategy(c.Kind)
-	if err != nil {
-		return fmt.Errorf("failed to create strategy %w", err)
-	}
-
+	// 各パーツに対して個別のStrategyインスタンスを作成するように修正
 	for i, part := range c.Parts {
+		// 各パーツごとに新しいstrategyインスタンスを作成
+		strategy, err := factory.CreateStrategy(c.Kind)
+		if err != nil {
+			return fmt.Errorf("failed to create strategy %w", err)
+		}
+
 		if err = part.SetStrategy(strategy); err != nil {
 			return fmt.Errorf("failed to set strategy for part %d: %w", i, err)
 		}
