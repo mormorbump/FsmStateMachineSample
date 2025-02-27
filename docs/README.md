@@ -65,6 +65,9 @@ sequenceDiagram
     participant F as StateFacade
     participant PC as PhaseController
     participant P as Phase
+    participant Cond as Condition
+    participant CP as ConditionPart
+    participant Strat as Strategy
 
     C->>S: WebSocket Connect
     S->>F: Get Current State
@@ -78,8 +81,31 @@ sequenceDiagram
     C->>S: Send Command
     S->>F: Execute Action
     F->>PC: Process Command
-    PC->>P: Update State
+    PC->>P: Update State (Activate)
+    P->>Cond: Activate Condition
+    Cond->>CP: Activate ConditionPart
+    CP->>Strat: Start Strategy
+    Strat-->>CP: Strategy Started
+    CP-->>Cond: ConditionPart Activated
+    Cond-->>P: Condition Activated
     P-->>PC: State Changed
+    PC-->>F: Phase Updated
+    F-->>S: State Changed
+    S-->>C: New State
+
+    Note over CP,Strat: 条件評価プロセス
+    C->>S: Send Increment Command
+    S->>F: Process Increment
+    F->>PC: Forward to Current Phase
+    PC->>P: Forward to Condition
+    P->>Cond: Forward to ConditionPart
+    Cond->>CP: Process Increment
+    CP->>Strat: Evaluate Condition
+    Strat-->>CP: Condition Satisfied
+    CP-->>Cond: ConditionPart Changed
+    Cond-->>P: Condition Satisfied
+    P->>P: Move to Next State
+    P-->>PC: Phase State Changed
     PC-->>F: Phase Updated
     F-->>S: State Changed
     S-->>C: New State
@@ -90,23 +116,23 @@ sequenceDiagram
 ```mermaid
 classDiagram
     class Phase {
-        +ID: PhaseID
-        +Order: int
-        -isActive: bool
-        +IsClear: bool
-        +Name: string
-        +Description: string
-        +Rule: GameRule
-        +ConditionType: ConditionType
-        +ConditionIDs: []ConditionID
-        +SatisfiedConditions: map[ConditionID]bool
-        +Conditions: map[ConditionID]*Condition
-        +StartTime: *time.Time
-        +FinishTime: *time.Time
-        -fsm: *fsm.FSM
-        -observers: []StateObserver
-        -mu: sync.RWMutex
-        -log: *zap.Logger
+        +ID PhaseID
+        +Order int
+        -isActive bool
+        +IsClear bool
+        +Name string
+        +Description string
+        +Rule GameRule
+        +ConditionType ConditionType
+        +ConditionIDs []ConditionID
+        +SatisfiedConditions map[ConditionID]bool
+        +Conditions map[ConditionID]*Condition
+        +StartTime *time.Time
+        +FinishTime *time.Time
+        -fsm *fsm.FSM
+        -observers []StateObserver
+        -mu sync.RWMutex
+        -log *zap.Logger
         +NewPhase(name, order, conditions, conditionType, rule)
         +OnConditionChanged(condition)
         -checkConditionsSatisfied() bool
@@ -129,21 +155,21 @@ classDiagram
     }
 
     class Condition {
-        +ID: ConditionID
-        +Label: string
-        +Kind: ConditionKind
-        +Parts: map[ConditionPartID]*ConditionPart
-        +Name: string
-        +Description: string
-        +IsClear: bool
-        +StartTime: *time.Time
-        +FinishTime: *time.Time
-        -fsm: *fsm.FSM
-        -stateObservers: []StateObserver
-        -condObservers: []ConditionObserver
-        -mu: sync.RWMutex
-        -log: *zap.Logger
-        -satisfiedParts: map[ConditionPartID]bool
+        +ID ConditionID
+        +Label string
+        +Kind ConditionKind
+        +Parts map[ConditionPartID]*ConditionPart
+        +Name string
+        +Description string
+        +IsClear bool
+        +StartTime *time.Time
+        +FinishTime *time.Time
+        -fsm *fsm.FSM
+        -stateObservers []StateObserver
+        -condObservers []ConditionObserver
+        -mu sync.RWMutex
+        -log *zap.Logger
+        -satisfiedParts map[ConditionPartID]bool
         +NewCondition(id, label, kind)
         +GetParts() []*ConditionPart
         +OnConditionPartChanged(part)
@@ -165,25 +191,25 @@ classDiagram
     }
 
     class ConditionPart {
-        +ID: ConditionPartID
-        +Label: string
-        +ComparisonOperator: ComparisonOperator
-        +IsClear: bool
-        +TargetEntityType: string
-        +TargetEntityID: int64
-        +ReferenceValueInt: int64
-        +ReferenceValueFloat: float64
-        +ReferenceValueString: string
-        +MinValue: int64
-        +MaxValue: int64
-        +Priority: int32
-        +StartTime: *time.Time
-        +FinishTime: *time.Time
-        -fsm: *fsm.FSM
-        -mu: sync.RWMutex
-        -log: *zap.Logger
-        -strategy: PartStrategy
-        -partObservers: []ConditionPartObserver
+        +ID ConditionPartID
+        +Label string
+        +ComparisonOperator ComparisonOperator
+        +IsClear bool
+        +TargetEntityType string
+        +TargetEntityID int64
+        +ReferenceValueInt int64
+        +ReferenceValueFloat float64
+        +ReferenceValueString string
+        +MinValue int64
+        +MaxValue int64
+        +Priority int32
+        +StartTime *time.Time
+        +FinishTime *time.Time
+        -fsm *fsm.FSM
+        -mu sync.RWMutex
+        -log *zap.Logger
+        -strategy PartStrategy
+        -partObservers []ConditionPartObserver
         +NewConditionPart(id, label)
         +GetReferenceValueInt() int64
         +GetComparisonOperator() ComparisonOperator
@@ -207,10 +233,10 @@ classDiagram
     }
 
     class GameState {
-        +CurrentState: string
-        +StateInfo: *GameStateInfo
-        +Phases: Phases
-        +CurrentPhase: *Phase
+        +CurrentState string
+        +StateInfo *GameStateInfo
+        +Phases Phases
+        +CurrentPhase *Phase
         +NewGameState(phases)
         +SetCurrentPhase(phase)
         +GetCurrentPhase() *Phase
@@ -220,11 +246,11 @@ classDiagram
     }
 
     class PhaseController {
-        -phases: Phases
-        -currentPhase: *Phase
-        -observers: struct
-        -mu: sync.RWMutex
-        -log: *zap.Logger
+        -phases Phases
+        -currentPhase *Phase
+        -observers struct
+        -mu sync.RWMutex
+        -log *zap.Logger
         +NewPhaseController(phases)
         +OnStateChanged(stateName)
         +OnConditionChanged(condition)
@@ -255,7 +281,7 @@ classDiagram
     }
 
     class stateFacadeImpl {
-        -controller: *PhaseController
+        -controller *PhaseController
         +NewStateFacade()
         +Start(ctx) error
         +Reset(ctx) error
@@ -277,9 +303,9 @@ classDiagram
     }
 
     class CounterStrategy {
-        -currentValue: int64
-        -observers: []StrategyObserver
-        -mu: sync.RWMutex
+        -currentValue int64
+        -observers []StrategyObserver
+        -mu sync.RWMutex
         +NewCounterStrategy()
         +Initialize(part) error
         +GetCurrentValue() interface{}
@@ -292,14 +318,14 @@ classDiagram
     }
 
     class TimeStrategy {
-        -observers: []StrategyObserver
-        -interval: time.Duration
-        -isRunning: bool
-        -ticker: *time.Ticker
-        -stopChan: chan struct{}
-        -mu: sync.RWMutex
-        -nextTrigger: time.Time
-        -log: *zap.Logger
+        -observers []StrategyObserver
+        -interval time.Duration
+        -isRunning bool
+        -ticker *time.Ticker
+        -stopChan chan struct{}
+        -mu sync.RWMutex
+        -nextTrigger time.Time
+        -log *zap.Logger
         +NewTimeStrategy()
         +Initialize(part) error
         +GetCurrentValue() interface{}
