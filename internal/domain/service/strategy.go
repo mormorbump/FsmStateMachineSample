@@ -10,7 +10,7 @@ type PartStrategy interface {
 	StrategySubject
 	Initialize(part interface{}) error
 	GetCurrentValue() interface{}
-	// Evaluate 条件を評価
+	Start(ctx context.Context, part interface{}) error
 	Evaluate(ctx context.Context, part interface{}, params interface{}) error
 	Cleanup() error
 }

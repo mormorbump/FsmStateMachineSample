@@ -58,7 +58,7 @@ func (s *TimeStrategy) GetCurrentValue() interface{} {
 }
 
 // Evaluate は時間条件を評価します
-func (s *TimeStrategy) Evaluate(ctx context.Context, part interface{}, params interface{}) error {
+func (s *TimeStrategy) Start(ctx context.Context, part interface{}) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -73,6 +73,18 @@ func (s *TimeStrategy) Evaluate(ctx context.Context, part interface{}, params in
 	s.updateNextTrigger()
 
 	go s.run()
+	return nil
+}
+
+func (s *TimeStrategy) Evaluate(ctx context.Context, part interface{}, params interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// TODO 再生、停止機能を追加するならここ
+	//s.isRunning = true
+	//s.ticker = time.NewTicker(s.interval)
+	//s.updateNextTrigger()
+
 	return nil
 }
 

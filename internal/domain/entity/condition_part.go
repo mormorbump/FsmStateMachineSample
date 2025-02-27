@@ -60,12 +60,14 @@ func NewConditionPart(id value.ConditionPartID, label string) *ConditionPart {
 				zap.Time("start_time", now),
 			)
 			if p.strategy != nil {
-				if err := p.strategy.Evaluate(ctx, p, nil); err != nil {
+				if err := p.strategy.Start(ctx, p); err != nil {
 					p.log.Error("failed to evaluate strategy", zap.Error(err))
 				}
 			}
 		},
-		"enter_" + value.StateProcessing: func(ctx context.Context, e *fsm.Event) {},
+		"enter_" + value.StateProcessing: func(ctx context.Context, e *fsm.Event) {
+
+		},
 		"enter_" + value.StateSatisfied: func(ctx context.Context, e *fsm.Event) {
 			now := time.Now()
 			p.FinishTime = &now
@@ -134,6 +136,9 @@ func (p *ConditionPart) IsSatisfied() bool {
 }
 
 func (p *ConditionPart) GetCurrentValue() interface{} {
+	if p.strategy == nil {
+		return int64(0) // strategyがnilの場合はデフォルト値を返す
+	}
 	return p.strategy.GetCurrentValue()
 }
 
@@ -177,6 +182,8 @@ func (p *ConditionPart) Process(ctx context.Context, increment int64) error {
 	if p.strategy != nil {
 		if err := p.strategy.Evaluate(ctx, p, increment); err != nil {
 			p.log.Error("failed to evaluate strategy", zap.Error(err))
+			// エラーが発生した場合は状態遷移を行わない
+			return err
 		}
 	}
 	return p.fsm.Event(ctx, value.EventProcess)

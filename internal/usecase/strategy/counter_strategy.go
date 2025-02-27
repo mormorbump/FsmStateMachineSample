@@ -3,6 +3,7 @@ package strategy
 import (
 	"context"
 	"fmt"
+	"go.uber.org/zap"
 	"state_sample/internal/domain/entity"
 	"state_sample/internal/domain/service"
 	"state_sample/internal/domain/value"
@@ -31,7 +32,7 @@ func (s *CounterStrategy) Initialize(part interface{}) error {
 	if !ok {
 		return fmt.Errorf("invalid part type: expected *entity.ConditionPart, got %T", part)
 	}
-	
+
 	s.currentValue = 0
 	s.AddObserver(condPart)
 	return nil
@@ -41,26 +42,31 @@ func (s *CounterStrategy) GetCurrentValue() interface{} {
 	return s.currentValue
 }
 
+func (s *CounterStrategy) Start(ctx context.Context, part interface{}) error {
+	return nil
+}
+
 // Evaluate はカウンター条件を評価します
 func (s *CounterStrategy) Evaluate(ctx context.Context, part interface{}, params interface{}) error {
 	log := logger.DefaultLogger()
 	log.Debug("Counter Evaluate")
-	
+
+	if params == nil {
+		return fmt.Errorf("invalid nil params: %v", params)
+	}
+
 	condPart, ok := part.(*entity.ConditionPart)
 	if !ok {
 		return fmt.Errorf("invalid part type: expected *entity.ConditionPart, got %T", part)
 	}
-
-	increment, ok := params.(int64)
-	if !ok {
-		return fmt.Errorf("invalid increment value")
-	}
+	increment := params.(int64)
 
 	// カウンター値を更新
 	s.mu.Lock()
 	s.currentValue += increment
 	s.mu.Unlock()
-	
+	log.Debug("currentValue", zap.Int64("currentValue", s.currentValue))
+
 	// ComparisonOperatorを使用して条件を評価
 	satisfied := false
 	switch condPart.GetComparisonOperator() {
@@ -82,9 +88,9 @@ func (s *CounterStrategy) Evaluate(ctx context.Context, part interface{}, params
 		return fmt.Errorf("unsupported comparison operator: %v", condPart.GetComparisonOperator())
 	}
 
+	log.Debug("Counter Evaluate", zap.Bool("satisfied", satisfied))
 	if satisfied {
 		s.NotifyUpdate(value.EventComplete)
-		return nil
 	} else {
 		s.NotifyUpdate(value.EventProcess)
 	}
@@ -122,6 +128,8 @@ func (s *CounterStrategy) RemoveObserver(observer service.StrategyObserver) {
 
 // NotifyUpdate オブザーバーに更新を通知します
 func (s *CounterStrategy) NotifyUpdate(event string) {
+	log := logger.DefaultLogger()
+	log.Debug("CounterStrategy.NotifyUpdate", zap.String("event", event))
 	s.mu.RLock()
 	observers := make([]service.StrategyObserver, len(s.observers))
 	copy(observers, s.observers)

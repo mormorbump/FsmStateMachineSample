@@ -16,21 +16,21 @@ import (
 
 // Condition は状態遷移の条件を表す構造体です
 type Condition struct {
-	ID                value.ConditionID
-	Label             string
-	Kind              value.ConditionKind
-	Parts             map[value.ConditionPartID]*ConditionPart
-	Name              string
-	Description       string
-	IsClear           bool
-	StartTime         *time.Time
-	FinishTime        *time.Time
-	fsm               *fsm.FSM
-	stateObservers    []service.StateObserver
-	condObservers     []service.ConditionObserver
-	mu                sync.RWMutex
-	log               *zap.Logger
-	satisfiedParts    map[value.ConditionPartID]bool
+	ID             value.ConditionID
+	Label          string
+	Kind           value.ConditionKind
+	Parts          map[value.ConditionPartID]*ConditionPart
+	Name           string
+	Description    string
+	IsClear        bool
+	StartTime      *time.Time
+	FinishTime     *time.Time
+	fsm            *fsm.FSM
+	stateObservers []service.StateObserver
+	condObservers  []service.ConditionObserver
+	mu             sync.RWMutex
+	log            *zap.Logger
+	satisfiedParts map[value.ConditionPartID]bool
 }
 
 // NewCondition は新しいConditionインスタンスを作成します
@@ -132,16 +132,17 @@ func (c *Condition) OnConditionPartChanged(part interface{}) {
 	}
 
 	c.mu.Lock()
-	c.satisfiedParts[condPart.ID] = true
-	satisfied := c.checkAllPartsSatisfied()
+	if condPart.IsSatisfied() {
+		c.satisfiedParts[condPart.ID] = true
+	}
 	c.mu.Unlock()
 
 	c.log.Debug("Condition: OnConditionPartChanged",
 		zap.Int64("condition_id", int64(c.ID)),
 		zap.Int64("part_id", int64(condPart.ID)),
-		zap.Bool("satisfied", satisfied),
+		zap.Bool("satisfied", c.checkAllPartsSatisfied()),
 	)
-	if satisfied {
+	if c.checkAllPartsSatisfied() {
 		_ = c.Complete(context.Background())
 	}
 }
@@ -319,7 +320,7 @@ func (c *Condition) NotifyConditionChanged(condition interface{}) {
 	observers := make([]service.ConditionObserver, len(c.condObservers))
 	copy(observers, c.condObservers)
 	c.mu.RUnlock()
-	
+
 	for _, observer := range observers {
 		observer.OnConditionChanged(condition)
 	}
