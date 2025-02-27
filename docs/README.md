@@ -322,7 +322,7 @@ classDiagram
         -interval time.Duration
         -isRunning bool
         -ticker *time.Ticker
-        -stopChan chan struct{}
+        -stopChan chan struct
         -mu sync.RWMutex
         -nextTrigger time.Time
         -log *zap.Logger
