@@ -85,6 +85,365 @@ sequenceDiagram
     S-->>C: New State
 ```
 
+## クラス図
+
+```mermaid
+classDiagram
+    class Phase {
+        +ID: PhaseID
+        +Order: int
+        -isActive: bool
+        +IsClear: bool
+        +Name: string
+        +Description: string
+        +Rule: GameRule
+        +ConditionType: ConditionType
+        +ConditionIDs: []ConditionID
+        +SatisfiedConditions: map[ConditionID]bool
+        +Conditions: map[ConditionID]*Condition
+        +StartTime: *time.Time
+        +FinishTime: *time.Time
+        -fsm: *fsm.FSM
+        -observers: []StateObserver
+        -mu: sync.RWMutex
+        -log: *zap.Logger
+        +NewPhase(name, order, conditions, conditionType, rule)
+        +OnConditionChanged(condition)
+        -checkConditionsSatisfied() bool
+        +CurrentState() string
+        +GetStateInfo() *GameStateInfo
+        +GetConditions() map[ConditionID]*Condition
+        +Activate(ctx) error
+        +Next(ctx) error
+        +Finish(ctx) error
+        +Reset(ctx) error
+        +AddObserver(observer)
+        +RemoveObserver(observer)
+        +NotifyStateChanged(state)
+    }
+
+    class Phases {
+        +Current() *Phase
+        +ResetAll(ctx) error
+        +ProcessAndActivateByNextOrder(ctx) (*Phase, error)
+    }
+
+    class Condition {
+        +ID: ConditionID
+        +Label: string
+        +Kind: ConditionKind
+        +Parts: map[ConditionPartID]*ConditionPart
+        +Name: string
+        +Description: string
+        +IsClear: bool
+        +StartTime: *time.Time
+        +FinishTime: *time.Time
+        -fsm: *fsm.FSM
+        -stateObservers: []StateObserver
+        -condObservers: []ConditionObserver
+        -mu: sync.RWMutex
+        -log: *zap.Logger
+        -satisfiedParts: map[ConditionPartID]bool
+        +NewCondition(id, label, kind)
+        +GetParts() []*ConditionPart
+        +OnConditionPartChanged(part)
+        -checkAllPartsSatisfied() bool
+        +Validate() error
+        +CurrentState() string
+        +Activate(ctx) error
+        +Complete(ctx) error
+        +Revert(ctx) error
+        +Reset(ctx) error
+        +AddPart(part)
+        +InitializePartStrategies(factory) error
+        +AddObserver(observer)
+        +RemoveObserver(observer)
+        +NotifyStateChanged(state)
+        +AddConditionObserver(observer)
+        +RemoveConditionObserver(observer)
+        +NotifyConditionChanged(condition)
+    }
+
+    class ConditionPart {
+        +ID: ConditionPartID
+        +Label: string
+        +ComparisonOperator: ComparisonOperator
+        +IsClear: bool
+        +TargetEntityType: string
+        +TargetEntityID: int64
+        +ReferenceValueInt: int64
+        +ReferenceValueFloat: float64
+        +ReferenceValueString: string
+        +MinValue: int64
+        +MaxValue: int64
+        +Priority: int32
+        +StartTime: *time.Time
+        +FinishTime: *time.Time
+        -fsm: *fsm.FSM
+        -mu: sync.RWMutex
+        -log: *zap.Logger
+        -strategy: PartStrategy
+        -partObservers: []ConditionPartObserver
+        +NewConditionPart(id, label)
+        +GetReferenceValueInt() int64
+        +GetComparisonOperator() ComparisonOperator
+        +GetMaxValue() int64
+        +GetMinValue() int64
+        +IsSatisfied() bool
+        +GetCurrentValue() interface{}
+        +OnUpdated(event)
+        +Validate() error
+        +CurrentState() string
+        +Activate(ctx) error
+        +Process(ctx, increment) error
+        +Complete(ctx) error
+        +Timeout(ctx) error
+        +Revert(ctx) error
+        +Reset(ctx) error
+        +SetStrategy(strategy) error
+        +AddConditionPartObserver(observer)
+        +RemoveConditionPartObserver(observer)
+        +NotifyPartChanged()
+    }
+
+    class GameState {
+        +CurrentState: string
+        +StateInfo: *GameStateInfo
+        +Phases: Phases
+        +CurrentPhase: *Phase
+        +NewGameState(phases)
+        +SetCurrentPhase(phase)
+        +GetCurrentPhase() *Phase
+        +GetPhases() Phases
+        +GetStateInfo() *GameStateInfo
+        +UpdateState(state)
+    }
+
+    class PhaseController {
+        -phases: Phases
+        -currentPhase: *Phase
+        -observers: struct
+        -mu: sync.RWMutex
+        -log: *zap.Logger
+        +NewPhaseController(phases)
+        +OnStateChanged(stateName)
+        +OnConditionChanged(condition)
+        +OnConditionPartChanged(part)
+        +GetCurrentPhase() *Phase
+        +SetCurrentPhase(phase)
+        +GetPhases() []*Phase
+        +Start(ctx) error
+        +Reset(ctx) error
+        +AddStateObserver(observer)
+        +RemoveStateObserver(observer)
+        +NotifyStateChanged(state)
+        +AddConditionObserver(observer)
+        +RemoveConditionObserver(observer)
+        +NotifyConditionChanged(condition)
+        +AddConditionPartObserver(observer)
+        +RemoveConditionPartObserver(observer)
+        +NotifyConditionPartChanged(part)
+    }
+
+    class StateFacade {
+        <<interface>>
+        +Start(ctx) error
+        +Reset(ctx) error
+        +GetCurrentPhase() *Phase
+        +GetController() *PhaseController
+        +GetConditionPart(conditionID, partID) (*ConditionPart, error)
+    }
+
+    class stateFacadeImpl {
+        -controller: *PhaseController
+        +NewStateFacade()
+        +Start(ctx) error
+        +Reset(ctx) error
+        +GetCurrentPhase() *Phase
+        +GetController() *PhaseController
+        +GetConditionPart(conditionID, partID) (*ConditionPart, error)
+    }
+
+    class PartStrategy {
+        <<interface>>
+        +Initialize(part) error
+        +GetCurrentValue() interface{}
+        +Start(ctx, part) error
+        +Evaluate(ctx, part, params) error
+        +Cleanup() error
+        +AddObserver(observer)
+        +RemoveObserver(observer)
+        +NotifyUpdate(event)
+    }
+
+    class CounterStrategy {
+        -currentValue: int64
+        -observers: []StrategyObserver
+        -mu: sync.RWMutex
+        +NewCounterStrategy()
+        +Initialize(part) error
+        +GetCurrentValue() interface{}
+        +Start(ctx, part) error
+        +Evaluate(ctx, part, params) error
+        +Cleanup() error
+        +AddObserver(observer)
+        +RemoveObserver(observer)
+        +NotifyUpdate(event)
+    }
+
+    class TimeStrategy {
+        -observers: []StrategyObserver
+        -interval: time.Duration
+        -isRunning: bool
+        -ticker: *time.Ticker
+        -stopChan: chan struct{}
+        -mu: sync.RWMutex
+        -nextTrigger: time.Time
+        -log: *zap.Logger
+        +NewTimeStrategy()
+        +Initialize(part) error
+        +GetCurrentValue() interface{}
+        +Start(ctx, part) error
+        +Evaluate(ctx, part, params) error
+        +Cleanup() error
+        -updateNextTrigger()
+        -run()
+        +AddObserver(observer)
+        +RemoveObserver(observer)
+        +NotifyUpdate(event)
+    }
+
+    class StrategyFactory {
+        +NewStrategyFactory()
+        +CreateStrategy(kind) (PartStrategy, error)
+    }
+
+    class StateObserver {
+        <<interface>>
+        +OnStateChanged(state)
+    }
+
+    class StrategyObserver {
+        <<interface>>
+        +OnUpdated(event)
+    }
+
+    class ConditionPartObserver {
+        <<interface>>
+        +OnConditionPartChanged(part)
+    }
+
+    class ConditionObserver {
+        <<interface>>
+        +OnConditionChanged(condition)
+    }
+
+    class StateSubject {
+        <<interface>>
+        +AddObserver(observer)
+        +RemoveObserver(observer)
+        +NotifyStateChanged(state)
+    }
+
+    class StrategySubject {
+        <<interface>>
+        +AddObserver(observer)
+        +RemoveObserver(observer)
+        +NotifyUpdate(event)
+    }
+
+    class ConditionSubject {
+        <<interface>>
+        +AddConditionObserver(observer)
+        +RemoveConditionObserver(observer)
+        +NotifyConditionChanged(condition)
+    }
+
+    class ConditionPartSubject {
+        <<interface>>
+        +AddConditionPartObserver(observer)
+        +RemoveConditionPartObserver(observer)
+        +NotifyPartChanged(part)
+    }
+
+    Phase "1" *-- "*" Condition
+    Condition "1" *-- "*" ConditionPart
+    GameState "1" *-- "1" Phases
+    Phases "1" *-- "*" Phase
+    PhaseController "1" *-- "1" Phases
+    PhaseController ..|> StateObserver
+    PhaseController ..|> ConditionObserver
+    PhaseController ..|> ConditionPartObserver
+    stateFacadeImpl "1" *-- "1" PhaseController
+    stateFacadeImpl ..|> StateFacade
+    ConditionPart "1" *-- "1" PartStrategy
+    CounterStrategy ..|> PartStrategy
+    TimeStrategy ..|> PartStrategy
+    StrategyFactory ..> PartStrategy : creates
+    Phase ..|> StateSubject
+    Phase ..|> ConditionObserver
+    Condition ..|> StateSubject
+    Condition ..|> ConditionSubject
+    Condition ..|> ConditionPartObserver
+    ConditionPart ..|> StrategyObserver
+    ConditionPart ..|> ConditionPartSubject
+    CounterStrategy ..|> StrategySubject
+    TimeStrategy ..|> StrategySubject
+```
+
+## 状態遷移図
+
+### ゲーム状態遷移図
+
+```mermaid
+stateDiagram-v2
+    [*] --> ready: 初期状態
+    ready --> active: start / OnStateChanged(StateActive)
+    active --> finish: finish / OnStateChanged(StateFinish)
+    finish --> ready: reset / OnStateChanged(StateReady)
+    finish --> [*]
+```
+
+### フェーズ状態遷移図
+
+```mermaid
+stateDiagram-v2
+    [*] --> ready: 初期状態
+    ready --> active: activate / OnStateChanged(StateActive)
+    active --> next: next / OnStateChanged(StateNext)
+    next --> finish: finish / OnStateChanged(StateFinish)
+    finish --> [*]
+```
+
+### サブフェーズ状態遷移図
+
+```mermaid
+stateDiagram-v2
+    [*] --> ready: 初期状態
+    ready --> active: activate / OnStateChanged(StateActive)
+    active --> next: next / OnStateChanged(StateNext)
+    next --> finish: finish / OnStateChanged(StateFinish)
+    finish --> [*]
+```
+
+### 条件状態遷移図
+
+```mermaid
+stateDiagram-v2
+    [*] --> Active: 初期状態
+    Active --> Inactive: evaluate_condition / notifyObservers(StateInactive)
+    Inactive --> [*]
+```
+
+### 条件パート状態遷移図
+
+```mermaid
+stateDiagram-v2
+    [*] --> Active: 初期状態
+    Active --> Inactive: evaluate_condition [hp <= 0] / notifyObservers(StateInactive)
+    Inactive --> [*]
+```
+
 ## 実装詳細
 
 ### Observer Pattern
