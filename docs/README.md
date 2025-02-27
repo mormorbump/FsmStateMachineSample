@@ -216,7 +216,7 @@ classDiagram
         +GetMaxValue() int64
         +GetMinValue() int64
         +IsSatisfied() bool
-        +GetCurrentValue() interface{}
+        +GetCurrentValue() interface
         +OnUpdated(event)
         +Validate() error
         +CurrentState() string
@@ -293,7 +293,7 @@ classDiagram
     class PartStrategy {
         <<interface>>
         +Initialize(part) error
-        +GetCurrentValue() interface{}
+        +GetCurrentValue() interface
         +Start(ctx, part) error
         +Evaluate(ctx, part, params) error
         +Cleanup() error
@@ -308,7 +308,7 @@ classDiagram
         -mu sync.RWMutex
         +NewCounterStrategy()
         +Initialize(part) error
-        +GetCurrentValue() interface{}
+        +GetCurrentValue() interface
         +Start(ctx, part) error
         +Evaluate(ctx, part, params) error
         +Cleanup() error
@@ -328,7 +328,7 @@ classDiagram
         -log *zap.Logger
         +NewTimeStrategy()
         +Initialize(part) error
-        +GetCurrentValue() interface{}
+        +GetCurrentValue() interface
         +Start(ctx, part) error
         +Evaluate(ctx, part, params) error
         +Cleanup() error
