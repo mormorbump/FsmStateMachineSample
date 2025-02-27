@@ -65,9 +65,7 @@ func NewConditionPart(id value.ConditionPartID, label string) *ConditionPart {
 				}
 			}
 		},
-		"enter_" + value.StateProcessing: func(ctx context.Context, e *fsm.Event) {
-
-		},
+		"enter_" + value.StateProcessing: func(ctx context.Context, e *fsm.Event) {},
 		"enter_" + value.StateSatisfied: func(ctx context.Context, e *fsm.Event) {
 			now := time.Now()
 			p.FinishTime = &now
@@ -143,11 +141,20 @@ func (p *ConditionPart) GetCurrentValue() interface{} {
 }
 
 func (p *ConditionPart) OnUpdated(event string) {
+	p.log.Debug("ConditionPart.OnUpdated called",
+		zap.String("event", event),
+		zap.String("current_state", p.fsm.Current()),
+		zap.Int64("id", int64(p.ID)))
+
 	switch {
 	case event == value.EventTimeout:
+		p.log.Debug("ConditionPart.OnUpdated: Calling Timeout")
 		p.Timeout(context.Background())
 	case event == value.EventComplete:
+		p.log.Debug("ConditionPart.OnUpdated: Calling Complete")
 		p.Complete(context.Background())
+	case event == value.EventProcess:
+		p.log.Debug("ConditionPart.OnUpdated: Calling Process for EventProcess")
 	}
 	p.NotifyPartChanged()
 }
@@ -176,8 +183,35 @@ func (p *ConditionPart) Activate(ctx context.Context) error {
 	return p.fsm.Event(ctx, value.EventActivate)
 }
 
+// isNotTransitionError はエラーがfsm.NoTransitionErrorかどうかを判定します
+func isNotTransitionError(err error) bool {
+	var noTransitionError fsm.NoTransitionError
+	return errors.As(err, &noTransitionError)
+}
+
 func (p *ConditionPart) Process(ctx context.Context, increment int64) error {
-	p.log.Debug("Part Process")
+	currentState := p.fsm.Current()
+	p.log.Debug("Part Process",
+		zap.Int64("id", int64(p.ID)),
+		zap.String("current_state", currentState),
+		zap.Int64("increment", increment))
+
+	// すでに状態が満たされていたらスキップ
+	if p.fsm.Current() == value.StateSatisfied {
+		p.log.Debug("Part Process: State changed to satisfied during evaluation, skipping process event")
+		return nil
+	}
+
+	// 状態遷移を先にしてからStrategyを実行(じゃないと、OnUpdatedでの通知で状態変更がUIに反映されない)
+	err := p.fsm.Event(ctx, value.EventProcess)
+	if err != nil && !isNotTransitionError(err) {
+		// NoTransitionError以外のエラーの場合のみエラーとして扱う
+		p.log.Error("Failed to transition state", zap.Error(err))
+		return err
+	} else {
+		p.log.Debug("State transition successful", zap.String("new_state", p.fsm.Current()))
+	}
+
 	// 複数人から呼ばれる部分なのでmutex
 	if p.strategy != nil {
 		if err := p.strategy.Evaluate(ctx, p, increment); err != nil {
@@ -186,7 +220,18 @@ func (p *ConditionPart) Process(ctx context.Context, increment int64) error {
 			return err
 		}
 	}
-	return p.fsm.Event(ctx, value.EventProcess)
+
+	// Evaluate後、状態が満たされている可能性があるので再度確認
+	if p.fsm.Current() == value.StateSatisfied {
+		p.log.Debug("Part Process: State changed to satisfied during evaluation, skipping process event")
+		return nil
+	}
+
+	p.log.Debug("Part Process: Calling FSM Event",
+		zap.String("event", value.EventProcess),
+		zap.String("current_state", p.fsm.Current()))
+
+	return nil
 }
 
 func (p *ConditionPart) Complete(ctx context.Context) error {

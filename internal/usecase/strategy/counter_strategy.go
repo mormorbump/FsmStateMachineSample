@@ -3,12 +3,13 @@ package strategy
 import (
 	"context"
 	"fmt"
-	"go.uber.org/zap"
 	"state_sample/internal/domain/entity"
 	"state_sample/internal/domain/service"
 	"state_sample/internal/domain/value"
 	logger "state_sample/internal/lib"
 	"sync"
+
+	"go.uber.org/zap"
 )
 
 // CounterStrategy はカウンターベースの条件評価戦略です
@@ -88,10 +89,17 @@ func (s *CounterStrategy) Evaluate(ctx context.Context, part interface{}, params
 		return fmt.Errorf("unsupported comparison operator: %v", condPart.GetComparisonOperator())
 	}
 
-	log.Debug("Counter Evaluate", zap.Bool("satisfied", satisfied))
+	log.Debug("Counter Evaluate",
+		zap.Bool("satisfied", satisfied),
+		zap.Int64("currentValue", s.currentValue),
+		zap.Int64("referenceValue", condPart.GetReferenceValueInt()),
+		zap.Int("comparisonOperator", int(condPart.GetComparisonOperator())))
+
 	if satisfied {
+		log.Debug("Counter condition satisfied, sending EventComplete")
 		s.NotifyUpdate(value.EventComplete)
 	} else {
+		log.Debug("Counter condition not satisfied, sending EventProcess")
 		s.NotifyUpdate(value.EventProcess)
 	}
 	return nil

@@ -324,7 +324,57 @@ func TestCounterStrategyCleanup(t *testing.T) {
 
 	// 状態の確認
 	assert.Equal(t, int64(0), strategy.currentValue)
-	assert.Nil(t, strategy.observers)
+	assert.NotNil(t, strategy.observers, "observers should not be nil")
+	assert.Empty(t, strategy.observers, "observers should be empty")
+}
+
+func TestCounterStrategyResetAndRetry(t *testing.T) {
+	// 新しいCounterStrategyを作成
+	strategy := NewCounterStrategy()
+
+	// テスト用のConditionPartを作成
+	part := entity.NewConditionPart(1, "Test Part")
+	part.ComparisonOperator = value.ComparisonOperatorGTE
+	part.ReferenceValueInt = 5
+
+	// 初期化
+	err := strategy.Initialize(part)
+	assert.NoError(t, err)
+
+	// モックオブザーバーが追加されていることを確認
+	assert.Len(t, strategy.observers, 1)
+
+	// 評価（まだ条件を満たさない）
+	ctx := context.Background()
+	mockObserver := &MockStrategyObserver{}
+	strategy.observers[0] = mockObserver // モックに置き換え
+
+	err = strategy.Evaluate(ctx, part, int64(3))
+	assert.NoError(t, err)
+	assert.Equal(t, int64(3), strategy.currentValue)
+	assert.Len(t, mockObserver.Events, 1)
+	assert.Equal(t, value.EventProcess, mockObserver.Events[0])
+
+	// クリーンアップ（リセット）
+	err = strategy.Cleanup()
+	assert.NoError(t, err)
+	assert.Equal(t, int64(0), strategy.currentValue)
+	assert.Empty(t, strategy.observers)
+
+	// 再初期化
+	err = strategy.Initialize(part)
+	assert.NoError(t, err)
+	assert.Len(t, strategy.observers, 1)
+
+	// 再評価（今度は条件を満たす）
+	mockObserver = &MockStrategyObserver{}
+	strategy.observers[0] = mockObserver // モックに置き換え
+
+	err = strategy.Evaluate(ctx, part, int64(5))
+	assert.NoError(t, err)
+	assert.Equal(t, int64(5), strategy.currentValue)
+	assert.Len(t, mockObserver.Events, 1)
+	assert.Equal(t, value.EventComplete, mockObserver.Events[0])
 }
 
 func TestCounterStrategyObserver(t *testing.T) {

@@ -129,6 +129,15 @@ func (pc *PhaseController) GetPhases() []*entity.Phase {
 func (pc *PhaseController) Start(ctx context.Context) error {
 	pc.log.Debug("PhaseController.Start", zap.String("action", "Starting phase sequence"))
 
+	// 現在のフェーズを取得
+	currentPhase := pc.GetCurrentPhase()
+	if currentPhase != nil {
+		pc.log.Debug("Current phase before ProcessAndActivateByNextOrder",
+			zap.String("name", currentPhase.Name),
+			zap.Int("order", currentPhase.Order),
+			zap.String("state", currentPhase.CurrentState()))
+	}
+
 	// 次のフェーズを取得して活性化
 	nextPhase, err := pc.phases.ProcessAndActivateByNextOrder(ctx)
 

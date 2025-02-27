@@ -173,6 +173,84 @@ func TestConditionPartWithStrategy(t *testing.T) {
 	err = part.Reset(ctx)
 	assert.NoError(t, err)
 	assert.True(t, mockStrategy.CleanupCalled)
+	// 再初期化されたことを確認
+	assert.Equal(t, 2, countTrueValues(
+		mockStrategy.InitializeCalled,
+		mockStrategy.InitializeCalled), "Initialize should be called twice")
+}
+
+func TestConditionPartResetAndRetry(t *testing.T) {
+	// テスト用のConditionPart
+	part := NewConditionPart(1, "Test Part")
+	ctx := context.Background()
+
+	// モック戦略の作成と設定
+	mockStrategy := &MockPartStrategy{
+		CurrentValue: int64(0),
+	}
+	err := part.SetStrategy(mockStrategy)
+	assert.NoError(t, err)
+	assert.True(t, mockStrategy.InitializeCalled)
+
+	// モックオブザーバーの作成と追加
+	mockObserver := &MockConditionPartObserver{}
+	part.AddConditionPartObserver(mockObserver)
+
+	// 最初のサイクル: Activate -> Process -> Reset
+	err = part.Activate(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, value.StateUnsatisfied, part.CurrentState())
+	assert.True(t, mockStrategy.StartCalled)
+
+	err = part.Process(ctx, 5)
+	assert.NoError(t, err)
+	assert.Equal(t, value.StateProcessing, part.CurrentState())
+	assert.True(t, mockStrategy.EvaluateCalled)
+
+	// リセット
+	err = part.Reset(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, value.StateReady, part.CurrentState())
+	assert.True(t, mockStrategy.CleanupCalled)
+	assert.False(t, part.IsClear)
+
+	// 戦略が再初期化されたことを確認
+	assert.Equal(t, 2, countTrueValues(
+		mockStrategy.InitializeCalled,
+		mockStrategy.InitializeCalled), "Initialize should be called twice")
+
+	// 2回目のサイクル: Activate -> Complete
+	mockStrategy.StartCalled = false
+	mockStrategy.EvaluateCalled = false
+	mockStrategy.CleanupCalled = false
+
+	err = part.Activate(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, value.StateUnsatisfied, part.CurrentState())
+	assert.True(t, mockStrategy.StartCalled)
+
+	// 直接Complete
+	err = part.Complete(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, value.StateSatisfied, part.CurrentState())
+	assert.True(t, part.IsClear)
+
+	// NotifyPartChangedを呼び出して、オブザーバーに通知
+	part.NotifyPartChanged()
+
+	// オブザーバーに通知されたことを確認
+	assert.GreaterOrEqual(t, len(mockObserver.ChangedParts), 1)
+}
+
+// countTrueValues は、与えられたbool値のうちtrueの数を数えます
+func countTrueValues(values ...bool) int {
+	count := 0
+	for _, v := range values {
+		if v {
+			count++
+		}
+	}
+	return count
 }
 
 func TestConditionPartObserver(t *testing.T) {

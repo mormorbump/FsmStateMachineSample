@@ -81,6 +81,7 @@ func NewPhase(name string, order int, conditions []*Condition, conditionType val
 		},
 		"enter_" + value.StateReady: func(ctx context.Context, e *fsm.Event) {
 			p.isActive = false
+			p.IsClear = false
 			p.StartTime = nil
 			p.FinishTime = nil
 			p.SatisfiedConditions = make(map[value.ConditionID]bool)
@@ -210,10 +211,6 @@ func (p *Phase) Reset(ctx context.Context) error {
 		zap.String("phase_name", p.Name),
 		zap.Int("phase_order", p.Order))
 
-	// 時間情報をリセット
-	p.StartTime = nil
-	p.FinishTime = nil
-
 	// 条件とパーツをリセット
 	for _, cond := range p.Conditions {
 		if err := cond.Reset(ctx); err != nil {
@@ -300,6 +297,7 @@ func (p Phases) ProcessAndActivateByNextOrder(ctx context.Context) (*Phase, erro
 	log := logger.DefaultLogger()
 	current := p.Current()
 
+	// 現在アクティブなフェーズがない場合は最初のフェーズを開始
 	if current == nil {
 		if len(p) <= 0 {
 			log.Error("Phases.ProcessAndActivateByNextOrder", zap.Error(fmt.Errorf("no phases available")))
@@ -313,18 +311,36 @@ func (p Phases) ProcessAndActivateByNextOrder(ctx context.Context) (*Phase, erro
 		return p[0], p[0].Activate(ctx)
 	}
 
-	if err := current.Finish(ctx); err != nil {
-		log.Error(current.Name, zap.Error(err))
-		return nil, err
-	}
+	log.Debug("ProcessAndActivateByNextOrder: Current phase",
+		zap.String("name", current.Name),
+		zap.Int("order", current.Order),
+		zap.String("state", current.CurrentState()))
 
-	for _, phase := range p {
-		log.Debug("Phases.ProcessAndActivateByNextOrder searching...")
-		if current.Order+1 == phase.Order {
-			log.Debug("Phases.ProcessAndActivateByNextOrder", zap.String("name", phase.Name), zap.String("action", "Activating next phase"))
-			return phase, phase.Activate(ctx)
+	// 現在のフェーズが"next"状態の場合、次のフェーズに進む
+	if current.CurrentState() == value.StateNext {
+		// 現在のフェーズを終了
+		if err := current.Finish(ctx); err != nil {
+			log.Error("Failed to finish current phase",
+				zap.String("name", current.Name),
+				zap.Error(err))
+			// エラーが発生しても次のフェーズに進む試みをする
 		}
+
+		// 次のフェーズを探す
+		for _, phase := range p {
+			if current.Order+1 == phase.Order {
+				log.Debug("Phases.ProcessAndActivateByNextOrder",
+					zap.String("name", phase.Name),
+					zap.String("action", "Activating next phase"))
+				return phase, phase.Activate(ctx)
+			}
+		}
+
+		log.Debug("No next phase found", zap.Int("current_order", current.Order))
+	} else {
+		log.Debug("Current phase is not in 'next' state, cannot proceed to next phase",
+			zap.String("current_state", current.CurrentState()))
 	}
 
-	return nil, nil
+	return current, nil
 }

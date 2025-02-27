@@ -127,6 +127,11 @@ func TestTimeStrategyCleanup(t *testing.T) {
 	err := strategy.Initialize(part)
 	assert.NoError(t, err)
 
+	// モックオブザーバーの追加
+	mockObserver := &MockTimeStrategyObserver{}
+	strategy.AddObserver(mockObserver)
+	assert.Len(t, strategy.observers, 2) // 1つはpart、1つはmockObserver
+
 	strategy.isRunning = true
 	strategy.ticker = time.NewTicker(1 * time.Second)
 
@@ -135,11 +140,59 @@ func TestTimeStrategyCleanup(t *testing.T) {
 	assert.NoError(t, err)
 	assert.False(t, strategy.isRunning)
 	assert.NotNil(t, strategy.stopChan) // 新しいチャネルが作成される
+	assert.Empty(t, strategy.observers, "observers should be empty after cleanup")
 
 	// 実行中でない場合
 	strategy.isRunning = false
 	err = strategy.Cleanup()
 	assert.NoError(t, err) // エラーは返さない
+}
+
+func TestTimeStrategyResetAndRetry(t *testing.T) {
+	// 新しいTimeStrategyを作成
+	strategy := NewTimeStrategy()
+
+	// テスト用のConditionPartを作成
+	part := entity.NewConditionPart(1, "Test Part")
+	part.ReferenceValueInt = 1 // 1秒
+
+	// 初期化
+	err := strategy.Initialize(part)
+	assert.NoError(t, err)
+	assert.Len(t, strategy.observers, 1)
+
+	// モックオブザーバーの作成と追加
+	mockObserver := &MockTimeStrategyObserver{}
+	strategy.AddObserver(mockObserver)
+	assert.Len(t, strategy.observers, 2)
+
+	// 開始
+	ctx := context.Background()
+	err = strategy.Start(ctx, part)
+	assert.NoError(t, err)
+	assert.True(t, strategy.isRunning)
+	assert.NotNil(t, strategy.ticker)
+
+	// クリーンアップ（リセット）
+	err = strategy.Cleanup()
+	assert.NoError(t, err)
+	assert.False(t, strategy.isRunning)
+	assert.Empty(t, strategy.observers, "observers should be empty after cleanup")
+
+	// 再初期化
+	err = strategy.Initialize(part)
+	assert.NoError(t, err)
+	assert.Len(t, strategy.observers, 1)
+
+	// 再開始
+	err = strategy.Start(ctx, part)
+	assert.NoError(t, err)
+	assert.True(t, strategy.isRunning)
+	assert.NotNil(t, strategy.ticker)
+
+	// 再度クリーンアップ
+	err = strategy.Cleanup()
+	assert.NoError(t, err)
 }
 
 func TestTimeStrategyObserver(t *testing.T) {
