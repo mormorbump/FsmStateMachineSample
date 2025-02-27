@@ -1,292 +1,260 @@
-# ステートマシン実装のリファクタリング計画
+# ステートマシン実装のテスト計画
 
-## 現状の課題
+## テスト計画の概要
 
-1. **ディレクトリ構造の問題**
-   - `domain/state`に state, value, type, strategy, observer, subject が混在している
-   - 循環参照が発生しやすい構造になっている
-   - 責務の分離が不十分
+リファクタリング後のコードの品質を確保するために、以下のテスト計画を実施します。
 
-2. **拡張性の問題**
-   - 新機能追加時に複数箇所の変更が必要
-   - PartStrategyの追加が複雑
+## 1. ユニットテスト
 
-3. **アーキテクチャの問題**
-   - オニオンアーキテクチャの原則とステートマシンの特性の両立が難しい
-   - インターフェースと実装の分離が不十分
+### 1.1 エンティティのテスト
 
-## リファクタリングの目標
-
-1. **責務の明確な分離**
-   - ドメイン層にはエンティティと値オブジェクトを配置
-   - 実装の詳細はユースケース層に移動
-
-2. **拡張性の向上**
-   - PartStrategyの追加だけで新機能を実装できるようにする
-   - Factory/Builderパターンの強化
-
-3. **循環参照の解消**
-   - 依存関係を一方向に整理
-   - インターフェースを活用した依存性逆転の原則の適用
-
-## 新しいディレクトリ構造
-
-```
-internal/
-  ├── domain/
-  │   ├── entity/           # エンティティの定義
-  │   │   ├── condition.go      # 条件エンティティ
-  │   │   ├── condition_part.go # 条件パーツエンティティ
-  │   │   ├── phase.go          # フェーズエンティティ
-  │   │   └── game_state.go     # ゲーム状態エンティティ
-  │   ├── value/            # 値オブジェクト
-  │   │   ├── game_state.go     # ゲーム状態の値オブジェクト
-  │   │   └── types.go          # 共通の型定義
-  │   └── service/          # ドメインサービスインターフェース
-  │       ├── observer.go       # オブザーバーインターフェース
-  │       └── strategy.go       # 戦略インターフェース
-  ├── usecase/
-  │   ├── state/            # 状態管理ユースケース
-  │   │   ├── phase_controller.go # フェーズ制御
-  │   │   └── state_facade.go     # 状態管理ファサード
-  │   └── strategy/         # 戦略実装
-  │       ├── time_strategy.go    # 時間ベース戦略
-  │       ├── counter_strategy.go # カウンターベース戦略
-  │       └── strategy_factory.go # 戦略ファクトリ
-  └── ui/                   # UI層（変更なし）
-      ├── handlers.go
-      ├── server.go
-      └── static/
-```
-
-## 実装計画
-
-### フェーズ1: ドメイン層の再構築
-
-1. **エンティティの定義**
-   - `domain/entity/condition_part.go`: 条件パーツエンティティ
-   - `domain/entity/condition.go`: 条件エンティティ
-   - `domain/entity/phase.go`: フェーズエンティティ
-   - `domain/entity/game_state.go`: ゲーム状態の定義
-
-2. **値オブジェクトの整理**
-   - `domain/value/game_state.go`: ゲーム状態の値オブジェクト
-   - `domain/value/types.go`: 共通の型定義（ConditionID, ConditionPartID, ConditionKind, ComparisonOperator等）
-
-3. **サービスインターフェースの定義**
-   - `domain/service/observer.go`: オブザーバーパターンのインターフェース
-   - `domain/service/strategy.go`: 戦略パターンのインターフェース
-
-### フェーズ2: ユースケース層の実装
-
-1. **状態管理ユースケース**
-   - `usecase/state/phase_controller.go`: フェーズ制御ロジック
-   - `usecase/state/state_facade.go`: 状態管理ファサード
-
-2. **戦略実装**
-   - `usecase/strategy/time_strategy.go`: 時間ベース戦略の実装
-   - `usecase/strategy/counter_strategy.go`: カウンターベース戦略の実装
-   - `usecase/strategy/strategy_factory.go`: 戦略ファクトリの実装
-
-### フェーズ3: UI層の調整
-
-1. **既存UI層との連携**
-   - 新しいインターフェースに合わせてUI層のコードを調整
-
-## 主要なインターフェース設計
-
-### 戦略パターンのインターフェース
+#### 1.1.1 ConditionPartのテスト (`internal/domain/entity/condition_part_test.go`)
 
 ```go
-// domain/service/strategy.go
-package service
+// テストの概要
+// 1. 基本的な状態遷移のテスト
+// 2. 戦略パターンとの連携テスト
+// 3. オブザーバーパターンのテスト
+// 4. バリデーションのテスト
+// 5. エッジケースのテスト
+```
 
-import (
-	"context"
-)
+テストケース:
+- 新規作成時の初期状態が `StateReady` であることを確認
+- `Activate` 後の状態が `StateUnsatisfied` であることを確認
+- `Process` 後の状態が `StateProcessing` であることを確認
+- `Complete` 後の状態が `StateSatisfied` であることを確認
+- `Reset` 後の状態が `StateReady` に戻ることを確認
+- 無効な状態遷移（例: `Ready` から `Satisfied` への直接遷移）がエラーを返すことを確認
+- モック戦略を使用して、戦略の評価結果に基づいて状態が正しく遷移することを確認
+- オブザーバーが正しく通知を受け取ることを確認
+- バリデーションが正しく機能することを確認（無効な比較演算子など）
 
-// PartStrategy 条件評価のための戦略インターフェース
-type PartStrategy interface {
-	Initialize(part interface{}) error
-	GetCurrentValue() interface{}
-	Evaluate(ctx context.Context, part interface{}, params interface{}) error
-	Cleanup() error
+#### 1.1.2 Conditionのテスト (`internal/domain/entity/condition_test.go`)
+
+```go
+// テストの概要
+// 1. 基本的な状態遷移のテスト
+// 2. 条件パーツの管理テスト
+// 3. オブザーバーパターンのテスト
+// 4. バリデーションのテスト
+// 5. エッジケースのテスト
+```
+
+テストケース:
+- 新規作成時の初期状態が `StateReady` であることを確認
+- `Activate` 後の状態が `StateUnsatisfied` であることを確認
+- すべての条件パーツが満たされた後、状態が `StateSatisfied` に遷移することを確認
+- `Reset` 後の状態が `StateReady` に戻ることを確認
+- 条件パーツの追加と取得が正しく機能することを確認
+- オブザーバーが正しく通知を受け取ることを確認
+- バリデーションが正しく機能することを確認（条件パーツがない場合など）
+
+### 1.2 戦略のテスト
+
+#### 1.2.1 CounterStrategyのテスト (`internal/usecase/strategy/counter_strategy_test.go`)
+
+```go
+// テストの概要
+// 1. 初期化のテスト
+// 2. 評価ロジックのテスト
+// 3. オブザーバー通知のテスト
+// 4. クリーンアップのテスト
+```
+
+テストケース:
+- 初期化後の現在値が0であることを確認
+- 評価後の現在値が正しく更新されることを確認
+- 各比較演算子（EQ, NEQ, GT, GTE, LT, LTE, Between）に対して正しく評価されることを確認
+- 条件が満たされた場合に `EventComplete` が通知されることを確認
+- 条件が満たされていない場合に `EventProcess` が通知されることを確認
+- クリーンアップ後にリソースが正しく解放されることを確認
+
+#### 1.2.2 TimeStrategyのテスト (`internal/usecase/strategy/time_strategy_test.go`)
+
+```go
+// テストの概要
+// 1. 初期化のテスト
+// 2. タイマー開始のテスト
+// 3. タイマーイベントのテスト
+// 4. クリーンアップのテスト
+```
+
+テストケース:
+- 初期化後の間隔が正しく設定されることを確認
+- `Start` 後にタイマーが開始されることを確認
+- タイマーイベントが発生した後に `EventTimeout` が通知されることを確認
+- クリーンアップ後にタイマーが停止されることを確認
+
+#### 1.2.3 StrategyFactoryのテスト (`internal/usecase/strategy/strategy_factory_test.go`)
+
+```go
+// テストの概要
+// 1. 各種戦略の作成テスト
+// 2. 未知の戦略種類に対するエラー処理のテスト
+```
+
+テストケース:
+- `KindTime` に対して `TimeStrategy` が作成されることを確認
+- `KindCounter` に対して `CounterStrategy` が作成されることを確認
+- 未知の種類に対してエラーが返されることを確認
+
+## 2. 統合テスト
+
+### 2.1 状態遷移の統合テスト
+
+```go
+// テストの概要
+// 1. 条件パーツと条件の連携テスト
+// 2. 戦略と条件パーツの連携テスト
+// 3. 複雑なシナリオのテスト
+```
+
+テストケース:
+- 複数の条件パーツを持つ条件が、すべてのパーツが満たされた場合にのみ満たされることを確認
+- 実際の戦略を使用して、条件パーツの状態が正しく遷移することを確認
+- 複雑なシナリオ（例: 一部の条件パーツが満たされ、一部がリセットされる）が正しく処理されることを確認
+
+## 3. モックの作成
+
+テストで使用するモックを作成します。
+
+### 3.1 StrategyObserverのモック
+
+```go
+// MockStrategyObserver は StrategyObserver インターフェースのモック実装です
+type MockStrategyObserver struct {
+	OnUpdatedFunc func(event string)
+	Events        []string
 }
 
-// StrategyFactory 戦略を作成するファクトリインターフェース
-type StrategyFactory interface {
-	CreateStrategy(kind interface{}) (PartStrategy, error)
+// OnUpdated はイベントを記録します
+func (m *MockStrategyObserver) OnUpdated(event string) {
+	m.Events = append(m.Events, event)
+	if m.OnUpdatedFunc != nil {
+		m.OnUpdatedFunc(event)
+	}
 }
 ```
 
-### オブザーバーパターンのインターフェース
+### 3.2 ConditionPartObserverのモック
 
 ```go
-// domain/service/observer.go
-package service
-
-// StateObserver 状態を監視するインターフェース
-type StateObserver interface {
-	OnStateChanged(state string)
+// MockConditionPartObserver は ConditionPartObserver インターフェースのモック実装です
+type MockConditionPartObserver struct {
+	OnConditionPartChangedFunc func(part interface{})
+	Parts                      []interface{}
 }
 
-// ConditionObserver 条件の状態変化を監視するインターフェース
-type ConditionObserver interface {
-	OnConditionChanged(condition interface{})
-}
-
-// ConditionPartObserver 条件パーツの状態変化を監視するインターフェース
-type ConditionPartObserver interface {
-	OnConditionPartChanged(part interface{})
+// OnConditionPartChanged はパーツの変更を記録します
+func (m *MockConditionPartObserver) OnConditionPartChanged(part interface{}) {
+	m.Parts = append(m.Parts, part)
+	if m.OnConditionPartChangedFunc != nil {
+		m.OnConditionPartChangedFunc(part)
+	}
 }
 ```
 
-## 実装の詳細
-
-### PartStrategyの拡張方法
-
-新しい戦略を追加する場合、以下の手順で実装します：
-
-1. `usecase/strategy/` に新しい戦略の実装ファイルを作成
-2. `domain/service/strategy.go` で定義された `PartStrategy` インターフェースを実装
-3. `usecase/strategy/strategy_factory.go` に新しい戦略の作成ロジックを追加
-
-例：新しいランダム条件戦略の追加
+### 3.3 PartStrategyのモック
 
 ```go
-// usecase/strategy/random_strategy.go
-package strategy
-
-import (
-	"context"
-	"math/rand"
-	"state_sample/internal/domain/service"
-	"state_sample/internal/domain/value"
-	"time"
-)
-
-// RandomConditionStrategy はランダム値に基づく条件評価戦略
-type RandomConditionStrategy struct {
-	currentValue int64
-	maxValue     int64
-	observers    []service.StrategyObserver
+// MockPartStrategy は PartStrategy インターフェースのモック実装です
+type MockPartStrategy struct {
+	InitializeFunc    func(part interface{}) error
+	GetCurrentValueFunc func() interface{}
+	StartFunc         func(ctx context.Context, part interface{}) error
+	EvaluateFunc      func(ctx context.Context, part interface{}, params interface{}) error
+	CleanupFunc       func() error
+	observers         []service.StrategyObserver
 }
 
-// NewRandomConditionStrategy は新しいRandomConditionStrategyを作成
-func NewRandomConditionStrategy() *RandomConditionStrategy {
-	rand.Seed(time.Now().UnixNano())
-	return &RandomConditionStrategy{}
-}
-
-// Initialize は戦略の初期化を行う
-func (s *RandomConditionStrategy) Initialize(part interface{}) error {
-	// 型アサーションでConditionPartの情報を取得
-	condPart := part.(*ConditionPart)
-	s.maxValue = condPart.GetReferenceValueInt()
-	return nil
-}
-
-// GetCurrentValue は現在の値を返す
-func (s *RandomConditionStrategy) GetCurrentValue() interface{} {
-	return s.currentValue
-}
-
-// Evaluate はランダム条件を評価する
-func (s *RandomConditionStrategy) Evaluate(ctx context.Context, part interface{}, params interface{}) error {
-	// 型アサーションでConditionPartの情報を取得
-	condPart := part.(*ConditionPart)
-	
-	// ランダム値の生成と評価ロジック
-	s.currentValue = rand.Int63n(s.maxValue + 1)
-	
-	// 条件の評価
-	if s.currentValue >= condPart.GetReferenceValueInt() {
-		s.NotifyUpdate(value.EventComplete)
-		return nil
+// Initialize はモックの初期化関数を呼び出します
+func (m *MockPartStrategy) Initialize(part interface{}) error {
+	if m.InitializeFunc != nil {
+		return m.InitializeFunc(part)
 	}
 	return nil
 }
 
-// Cleanup は戦略のリソースを解放する
-func (s *RandomConditionStrategy) Cleanup() error {
-	s.currentValue = 0
-	s.observers = nil
+// GetCurrentValue は現在の値を返します
+func (m *MockPartStrategy) GetCurrentValue() interface{} {
+	if m.GetCurrentValueFunc != nil {
+		return m.GetCurrentValueFunc()
+	}
 	return nil
 }
 
-// AddObserver オブザーバーを追加
-func (s *RandomConditionStrategy) AddObserver(observer service.StrategyObserver) {
-	s.observers = append(s.observers, observer)
+// Start はモックの開始関数を呼び出します
+func (m *MockPartStrategy) Start(ctx context.Context, part interface{}) error {
+	if m.StartFunc != nil {
+		return m.StartFunc(ctx, part)
+	}
+	return nil
 }
 
-// RemoveObserver オブザーバーを削除
-func (s *RandomConditionStrategy) RemoveObserver(observer service.StrategyObserver) {
-	for i, obs := range s.observers {
+// Evaluate はモックの評価関数を呼び出します
+func (m *MockPartStrategy) Evaluate(ctx context.Context, part interface{}, params interface{}) error {
+	if m.EvaluateFunc != nil {
+		return m.EvaluateFunc(ctx, part, params)
+	}
+	return nil
+}
+
+// Cleanup はモックのクリーンアップ関数を呼び出します
+func (m *MockPartStrategy) Cleanup() error {
+	if m.CleanupFunc != nil {
+		return m.CleanupFunc()
+	}
+	return nil
+}
+
+// AddObserver はオブザーバーを追加します
+func (m *MockPartStrategy) AddObserver(observer service.StrategyObserver) {
+	m.observers = append(m.observers, observer)
+}
+
+// RemoveObserver はオブザーバーを削除します
+func (m *MockPartStrategy) RemoveObserver(observer service.StrategyObserver) {
+	for i, obs := range m.observers {
 		if obs == observer {
-			s.observers = append(s.observers[:i], s.observers[i+1:]...)
+			m.observers = append(m.observers[:i], m.observers[i+1:]...)
 			break
 		}
 	}
 }
 
-// NotifyUpdate オブザーバーに更新を通知
-func (s *RandomConditionStrategy) NotifyUpdate(event string) {
-	for _, observer := range s.observers {
+// NotifyUpdate はオブザーバーに通知します
+func (m *MockPartStrategy) NotifyUpdate(event string) {
+	for _, observer := range m.observers {
 		observer.OnUpdated(event)
 	}
 }
 ```
 
-そして、ファクトリに追加：
+## 4. テスト実行計画
 
-```go
-// usecase/strategy/strategy_factory.go の CreateStrategy メソッドに追加
-func (f *StrategyFactoryImpl) CreateStrategy(kind interface{}) (service.PartStrategy, error) {
-	condKind := kind.(value.ConditionKind)
-	switch condKind {
-	case value.KindTime:
-		return NewTimeConditionStrategy(), nil
-	case value.KindCounter:
-		return NewCounterConditionStrategy(), nil
-	case value.KindRandom:  // 新しい種類を追加
-		return NewRandomConditionStrategy(), nil
-	default:
-		return nil, fmt.Errorf("unknown condition kind: %v", condKind)
-	}
-}
-```
+1. 各コンポーネントのユニットテストを実装
+2. 統合テストを実装
+3. テストの自動化（CI/CDパイプラインへの組み込み）
+4. コードカバレッジの測定と改善
 
-## 移行計画
+## 5. テスト実装の優先順位
 
-1. 新しいディレクトリ構造を作成
-2. ドメイン層のエンティティと値オブジェクトを定義
-3. サービスインターフェースを定義
-4. 既存コードを新しい構造に徐々に移行
-5. テストを実行して機能が正しく動作することを確認
-6. 古いコードを削除
+1. 基本的なエンティティのテスト（ConditionPart, Condition）
+2. 戦略のテスト（CounterStrategy, TimeStrategy）
+3. ファクトリのテスト（StrategyFactory）
+4. 統合テスト
 
-## 期待される効果
+## 6. テストの実行方法
 
-1. **拡張性の向上**
-   - 新しい戦略の追加が容易になる
-   - 変更箇所が限定される
+```bash
+# 全てのテストを実行
+go test ./...
 
-2. **保守性の向上**
-   - 責務が明確に分離される
-   - テストが書きやすくなる
+# 特定のパッケージのテストを実行
+go test ./internal/domain/entity/...
+go test ./internal/usecase/strategy/...
 
-3. **理解しやすさの向上**
-   - コードの構造が整理される
-   - 依存関係が明確になる
-
-## リスクと対策
-
-1. **リファクタリングによる機能退行**
-   - 対策: 段階的な移行と継続的なテスト
-
-2. **パフォーマンスへの影響**
-   - 対策: パフォーマンステストの実施
-   - 対策: ボトルネックの特定と最適化
-
-3. **開発工数の増加**
-   - 対策: 優先順位の高い部分から段階的に実施
+# カバレッジレポートの生成
+go test ./... -coverprofile=coverage.out
+go tool cover -html=coverage.out
