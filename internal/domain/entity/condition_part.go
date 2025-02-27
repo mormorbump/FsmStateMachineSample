@@ -228,10 +228,21 @@ func (p *ConditionPart) Reset(ctx context.Context) error {
 	p.StartTime = nil
 	p.FinishTime = nil
 
+	// 戦略をリセット
 	if p.strategy != nil {
+		// 現在の戦略をクリーンアップ
 		if err := p.strategy.Cleanup(); err != nil {
 			return fmt.Errorf("failed to cleanup strategy: %w", err)
 		}
+
+		// 戦略を再初期化
+		if err := p.strategy.Initialize(p); err != nil {
+			return fmt.Errorf("failed to reinitialize strategy: %w", err)
+		}
+
+		p.log.Debug("ConditionPart.Reset: Strategy reinitialized",
+			zap.Int64("id", int64(p.ID)),
+			zap.String("label", p.Label))
 	}
 
 	return p.fsm.Event(ctx, value.EventReset)

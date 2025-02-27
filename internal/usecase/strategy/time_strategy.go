@@ -105,6 +105,10 @@ func (s *TimeStrategy) Cleanup() error {
 	}
 	close(s.stopChan)
 	s.stopChan = make(chan struct{})
+
+	// observersをnilにするのではなく、空のスライスにする
+	s.observers = make([]service.StrategyObserver, 0)
+
 	return nil
 }
 

@@ -103,7 +103,8 @@ func (s *CounterStrategy) Cleanup() error {
 	defer s.mu.Unlock()
 
 	s.currentValue = 0
-	s.observers = nil
+	// observersをnilにするのではなく、空のスライスにする
+	s.observers = make([]service.StrategyObserver, 0)
 	return nil
 }
 
