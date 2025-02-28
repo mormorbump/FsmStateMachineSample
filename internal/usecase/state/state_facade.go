@@ -31,17 +31,27 @@ func NewStateFacade() StateFacade {
 	factory := strategy.NewStrategyFactory()
 
 	// Phase1 (カウンター条件)
-	part1 := entity.NewConditionPart(1, "Counter_Part")
-	part1.ReferenceValueInt = 5                            // 目標値: 1
-	part1.ComparisonOperator = value.ComparisonOperatorGTE // 以上
-	cond1 := entity.NewCondition(1, "Counter_Condition", value.KindCounter)
-	cond1.AddPart(part1)
-	if err := cond1.InitializePartStrategies(factory); err != nil {
+	part1_1 := entity.NewConditionPart(1, "Counter_Part")
+	part1_1.ReferenceValueInt = 1
+	part1_1.ComparisonOperator = value.ComparisonOperatorGTE // 以上
+	cond1_1 := entity.NewCondition(1, "Counter_Condition", value.KindCounter)
+	cond1_1.AddPart(part1_1)
+
+	part1_2 := entity.NewConditionPart(2, "Time_Part")
+	part1_2.ReferenceValueInt = 5
+	cond1_2 := entity.NewCondition(2, "Time_Condition", value.KindTime)
+	cond1_2.AddPart(part1_2)
+	if err := cond1_1.InitializePartStrategies(factory); err != nil {
 		panic(err)
 	}
-	phase1 := entity.NewPhase("PHASE1", 1, []*entity.Condition{cond1}, value.ConditionTypeSingle, value.GameRule_Animation)
-	part1.AddConditionPartObserver(cond1)
-	cond1.AddConditionObserver(phase1)
+	if err := cond1_2.InitializePartStrategies(factory); err != nil {
+		panic(err)
+	}
+	phase1 := entity.NewPhase("PHASE1", 1, []*entity.Condition{cond1_1, cond1_2}, value.ConditionTypeOr, value.GameRule_Animation)
+	part1_1.AddConditionPartObserver(cond1_1)
+	part1_2.AddConditionPartObserver(cond1_2)
+	cond1_1.AddConditionObserver(phase1)
+	cond1_2.AddConditionObserver(phase1)
 	log.Debug("StateFacade initialized", zap.Any("phase1", phase1))
 
 	// Phase2 (2秒)

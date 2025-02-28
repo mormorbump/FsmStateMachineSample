@@ -36,8 +36,13 @@ h1 {
     margin-top: 20px;
 }
 
-.info-wrapper > div {
-    flex: 1;
+/* 各要素のフレックス比率を調整 */
+.phase-details {
+    flex: 0.3; /* 30%の幅に縮小 */
+}
+
+.conditions-container {
+    flex: 0.7; /* 70%の幅に拡大 */
 }
 
 .info-wrapper h2 {
@@ -400,12 +405,17 @@ h1 {
     background-color: white;
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    max-height: 500px; /* 最大高さを設定 */
+    overflow-y: auto; /* 縦方向のスクロールを有効化 */
 }
 
 .conditions-list {
     display: flex;
     flex-direction: column;
     gap: 15px;
+    max-height: 450px; /* コンテナより少し小さく設定 */
+    overflow-y: auto; /* 縦方向のスクロールを有効化 */
+    padding-right: 5px; /* スクロールバー用の余白 */
 }
 
 .condition-item {

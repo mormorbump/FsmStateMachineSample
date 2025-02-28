@@ -275,12 +275,15 @@ class StateManager {
         if (isRunning) {
             startBtn.disabled = true;
             stopBtn.disabled = false;
-            resetBtn.disabled = true;
+            // resetBtn.disabled = true; // リセットボタンは常に有効にするため、この行をコメントアウト
         } else {
             startBtn.disabled = false;
             stopBtn.disabled = true;
-            resetBtn.disabled = false;
+            // resetBtn.disabled = false; // 不要になるためコメントアウト
         }
+        
+        // リセットボタンは常に有効
+        resetBtn.disabled = false;
     }
 
     formatTime(timeStr) {
