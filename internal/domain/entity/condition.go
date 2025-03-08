@@ -139,13 +139,13 @@ func (c *Condition) OnConditionPartChanged(part interface{}) {
 		// パーツがsatisfiedでない場合はマップから削除
 		delete(c.satisfiedParts, condPart.ID)
 	}
-	
+
 	// 全てのパーツの状態をログに出力
 	partsStatus := make(map[value.ConditionPartID]bool)
 	for id, part := range c.Parts {
 		partsStatus[id] = part.IsSatisfied()
 	}
-	
+
 	satisfied := c.checkAllPartsSatisfied()
 	c.mu.Unlock()
 
@@ -158,7 +158,7 @@ func (c *Condition) OnConditionPartChanged(part interface{}) {
 		zap.Int("total_parts_count", len(c.Parts)),
 		zap.Bool("all_satisfied", satisfied),
 	)
-	
+
 	// 条件が満たされた場合のみCompleteを呼び出す
 	if satisfied && c.CurrentState() != value.StateSatisfied {
 		c.log.Debug("Condition: All parts satisfied, completing condition",

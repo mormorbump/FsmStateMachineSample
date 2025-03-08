@@ -51,7 +51,13 @@ func NewPhaseController(phases entity.Phases) *PhaseController {
 
 // OnPhaseChanged は状態変更通知を受け取るメソッドです
 func (pc *PhaseController) OnPhaseChanged(phaseEntity interface{}) {
-	phase := phaseEntity.(*entity.Phase)
+	// 型チェック
+	phase, ok := phaseEntity.(*entity.Phase)
+	if !ok {
+		pc.log.Error("Invalid phase type in OnPhaseChanged")
+		return
+	}
+
 	pc.log.Debug("PhaseController.OnPhaseChanged", zap.String("state", phase.CurrentState()),
 		zap.String("expected", value.StateNext),
 		zap.Bool("equals", phase.CurrentState() == value.StateNext))
@@ -67,12 +73,28 @@ func (pc *PhaseController) OnPhaseChanged(phaseEntity interface{}) {
 // OnConditionChanged は条件変更通知を受け取るメソッドです
 func (pc *PhaseController) OnConditionChanged(condition interface{}) {
 	pc.log.Debug("PhaseController.OnConditionChanged", zap.Any("condition", condition))
+
+	// 型チェック
+	_, ok := condition.(*entity.Condition)
+	if !ok {
+		pc.log.Error("Invalid condition type in OnConditionChanged")
+		return
+	}
+
 	pc.NotifyEntityChanged(condition)
 }
 
 // OnConditionPartChanged は条件パーツ変更通知を受け取るメソッドです
 func (pc *PhaseController) OnConditionPartChanged(part interface{}) {
 	pc.log.Debug("PhaseController.OnConditionPartChanged", zap.Any("part", part))
+
+	// 型チェック
+	_, ok := part.(*entity.ConditionPart)
+	if !ok {
+		pc.log.Error("Invalid part type in OnConditionPartChanged")
+		return
+	}
+
 	pc.NotifyEntityChanged(part)
 }
 

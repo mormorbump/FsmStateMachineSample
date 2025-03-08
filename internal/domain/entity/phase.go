@@ -178,6 +178,11 @@ func (p *Phase) CurrentState() string {
 	return p.fsm.Current()
 }
 
+// SetState はテスト用に状態を直接設定します
+func (p *Phase) SetState(state string) {
+	p.fsm.SetState(state)
+}
+
 // GetStateInfo は状態情報を返します
 func (p *Phase) GetStateInfo() *value.GameStateInfo {
 	return value.GetGameStateInfo(p.CurrentState())

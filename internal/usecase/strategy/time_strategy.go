@@ -222,7 +222,7 @@ func (s *TimeStrategy) NotifyUpdate(event string) {
 	if s.log == nil {
 		s.log = logger.DefaultLogger()
 	}
-	
+
 	s.log.Debug("TimeStrategy.NotifyUpdate", zap.String("event", event))
 	s.mu.RLock()
 	observers := make([]service.StrategyObserver, len(s.observers))

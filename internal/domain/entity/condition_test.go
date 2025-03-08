@@ -15,8 +15,10 @@ type MockStateObserver struct {
 }
 
 // OnPhaseChanged は状態変更を記録します
-func (m *MockStateObserver) OnPhaseChanged(state string) {
-	m.States = append(m.States, state)
+func (m *MockStateObserver) OnPhaseChanged(phase interface{}) {
+	if state, ok := phase.(string); ok {
+		m.States = append(m.States, state)
+	}
 }
 
 // MockConditionObserver は ConditionObserver インターフェースのモック実装です

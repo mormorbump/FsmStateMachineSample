@@ -70,7 +70,7 @@ func getTypeName(obj interface{}) string {
 	if obj == nil {
 		return ""
 	}
-	
+
 	switch obj.(type) {
 	case *TimeStrategy:
 		return "*strategy.TimeStrategy"

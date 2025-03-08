@@ -236,7 +236,7 @@ func TestConditionPartResetAndRetry(t *testing.T) {
 	assert.True(t, part.IsClear)
 
 	// NotifyPartChangedを呼び出して、オブザーバーに通知
-	part.NotifyPartChanged()
+	part.NotifyPartChanged(part)
 
 	// オブザーバーに通知されたことを確認
 	assert.GreaterOrEqual(t, len(mockObserver.ChangedParts), 1)
@@ -264,7 +264,7 @@ func TestConditionPartObserver(t *testing.T) {
 	part.AddConditionPartObserver(mockObserver)
 
 	// 状態変更の通知
-	part.NotifyPartChanged()
+	part.NotifyPartChanged(part)
 	assert.Len(t, mockObserver.ChangedParts, 1)
 	assert.Equal(t, part, mockObserver.ChangedParts[0])
 
@@ -273,7 +273,7 @@ func TestConditionPartObserver(t *testing.T) {
 
 	// 状態変更の通知（オブザーバーが削除されているので通知されない）
 	mockObserver.ChangedParts = nil
-	part.NotifyPartChanged()
+	part.NotifyPartChanged(part)
 	assert.Len(t, mockObserver.ChangedParts, 0)
 }
 
