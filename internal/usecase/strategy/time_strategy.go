@@ -57,7 +57,7 @@ func (s *TimeStrategy) GetCurrentValue() interface{} {
 	return nil
 }
 
-// Evaluate は時間条件を評価します
+// Start は時間条件の評価を開始します
 func (s *TimeStrategy) Start(ctx context.Context, part interface{}) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -67,10 +67,26 @@ func (s *TimeStrategy) Start(ctx context.Context, part interface{}) error {
 		return nil
 	}
 
-	s.log.Debug("Starting IntervalTimer")
+	// インターバルが設定されていることを確認
+	if s.interval <= 0 {
+		s.log.Error("Invalid interval in Start", zap.Duration("interval", s.interval))
+		return fmt.Errorf("invalid interval: %v", s.interval)
+	}
+
+	s.log.Debug("Starting IntervalTimer", zap.Duration("interval", s.interval))
 	s.isRunning = true
 	s.ticker = time.NewTicker(s.interval)
 	s.updateNextTrigger()
+
+	// stopChanが閉じられていないことを確認
+	select {
+	case <-s.stopChan:
+		// stopChanが閉じられている場合は再作成
+		s.log.Debug("Recreating stopChan")
+		s.stopChan = make(chan struct{})
+	default:
+		// 問題なし
+	}
 
 	go s.run()
 	return nil
@@ -100,14 +116,32 @@ func (s *TimeStrategy) Cleanup() error {
 
 	s.log.Debug("Stopping IntervalTimer")
 	s.isRunning = false
+
+	// タイマーを停止
 	if s.ticker != nil {
 		s.ticker.Stop()
+		s.ticker = nil
+		s.log.Debug("Ticker stopped and set to nil")
 	}
-	close(s.stopChan)
-	s.stopChan = make(chan struct{})
 
-	// observersをnilにするのではなく、空のスライスにする
+	// stopChanを閉じる（すでに閉じられていないことを確認）
+	select {
+	case <-s.stopChan:
+		// すでに閉じられている
+		s.log.Debug("stopChan was already closed")
+	default:
+		// まだ閉じられていない
+		s.log.Debug("Closing stopChan")
+		close(s.stopChan)
+	}
+
+	// 新しいstopChanを作成
+	s.stopChan = make(chan struct{})
+	s.log.Debug("Created new stopChan")
+
+	// observersをクリア
 	s.observers = make([]service.StrategyObserver, 0)
+	s.log.Debug("Cleared observers")
 
 	return nil
 }
@@ -121,13 +155,43 @@ func (s *TimeStrategy) updateNextTrigger() {
 // タイマーループを実行します
 func (s *TimeStrategy) run() {
 	s.log.Debug("Starting timer loop")
+	defer s.log.Debug("Timer loop exited")
+
+	// タイマーが初期化されていることを確認
+	s.mu.RLock()
+	ticker := s.ticker
+	stopChan := s.stopChan
+	interval := s.interval
+	s.mu.RUnlock()
+
+	if ticker == nil {
+		s.log.Error("Timer is nil in run()")
+		return
+	}
+
+	s.log.Debug("Timer loop started with interval", zap.Duration("interval", interval))
+
+	// タイマーループ
 	for {
 		select {
-		case <-s.ticker.C:
-			s.log.Debug("Timer tick")
+		case <-ticker.C:
+			s.log.Debug("Timer tick received")
+			// タイマーが停止されていないことを確認
+			s.mu.RLock()
+			isRunning := s.isRunning
+			s.mu.RUnlock()
+
+			if !isRunning {
+				s.log.Debug("Timer is no longer running, exiting loop")
+				return
+			}
+
+			s.log.Debug("Notifying observers about timeout event")
 			s.NotifyUpdate(value.EventTimeout)
-		case <-s.stopChan:
-			s.log.Debug("Timer loop stopped")
+			s.log.Debug("Notification complete")
+
+		case <-stopChan:
+			s.log.Debug("Stop signal received, timer loop stopped")
 			return
 		}
 	}
@@ -154,6 +218,12 @@ func (s *TimeStrategy) RemoveObserver(observer service.StrategyObserver) {
 
 // NotifyUpdate オブザーバーに更新を通知します
 func (s *TimeStrategy) NotifyUpdate(event string) {
+	// ロガーが初期化されていない場合は初期化する
+	if s.log == nil {
+		s.log = logger.DefaultLogger()
+	}
+	
+	s.log.Debug("TimeStrategy.NotifyUpdate", zap.String("event", event))
 	s.mu.RLock()
 	observers := make([]service.StrategyObserver, len(s.observers))
 	copy(observers, s.observers)

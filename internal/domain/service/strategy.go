@@ -19,3 +19,15 @@ type PartStrategy interface {
 type StrategyFactory interface {
 	CreateStrategy(kind value.ConditionKind) (PartStrategy, error)
 }
+
+// StrategySubject 戦略の更新を通知するインターフェース
+type StrategySubject interface {
+	AddObserver(observer StrategyObserver)
+	RemoveObserver(observer StrategyObserver)
+	NotifyUpdate(event string)
+}
+
+// StrategyObserver 戦略を監視するインターフェース
+type StrategyObserver interface {
+	OnUpdated(event string)
+}

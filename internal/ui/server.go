@@ -68,25 +68,10 @@ func NewStateServer(facade state.StateFacade) *StateServer {
 	controller := facade.GetController()
 	log.Debug("Got controller from facade", zap.String("controller", fmt.Sprintf("%p", controller)))
 
-	controller.AddStateObserver(server)
+	controller.AddControllerObserver(server)
 	log.Debug("Added StateServer as StateObserver", zap.String("server", fmt.Sprintf("%p", server)))
 
-	controller.AddConditionObserver(server)
-	controller.AddConditionPartObserver(server)
-
 	return server
-}
-
-func (s *StateServer) OnStateChanged(state string) {
-	log := logger.DefaultLogger()
-	log.Debug("StateServer.OnStateChanged", zap.String("state", state))
-	currentPhase := s.stateFacade.GetCurrentPhase()
-
-	// GameStateInfoの取得
-	stateInfo := s.getGameStateInfo(currentPhase)
-
-	update := s.EditResponse(state, currentPhase, stateInfo)
-	s.broadcastUpdate(update)
 }
 
 // GameStateInfo は状態情報を表す構造体です
@@ -194,33 +179,28 @@ func (s *StateServer) EditResponse(stateName string, currentPhase *entity.Phase,
 	return update
 }
 
-func (s *StateServer) OnConditionChanged(condition interface{}) {
+func (s *StateServer) OnEntityChanged(entityObj interface{}) {
 	log := logger.DefaultLogger()
-	cond, ok := condition.(*entity.Condition)
-	if !ok {
-		log.Error("Invalid condition type in OnConditionChanged")
-		return
+	var currentPhase *entity.Phase
+	var stateInfo *GameStateInfo
+	if entityObj != nil {
+		switch e := entityObj.(type) {
+		case *entity.Phase:
+			log.Debug("StateServer.OnEntityChanged", zap.Any("entity", e))
+		case *entity.Condition:
+			log.Debug("StateServer.OnEntityChanged", zap.Any("entity", e))
+		case *entity.ConditionPart:
+			log.Debug("StateServer.OnEntityChanged", zap.Any("entity", e))
+		default:
+			log.Debug("StateServer.OnEntityChanged", zap.Any("entity", e))
+		}
+		currentPhase = s.stateFacade.GetCurrentPhase()
+		stateInfo = s.getGameStateInfo(currentPhase)
+	} else {
+		// nilの場合は終了なので、最後の情報を取得
+		currentPhase = s.stateFacade.GetController().GetPhases()[:1][0]
+		stateInfo = s.getGameStateInfo(currentPhase)
 	}
-
-	log.Debug("StateServer.OnConditionChanged", zap.Int64("conditionId", int64(cond.ID)))
-	currentPhase := s.stateFacade.GetCurrentPhase()
-	stateInfo := s.getGameStateInfo(currentPhase)
-
-	update := s.EditResponse(currentPhase.CurrentState(), currentPhase, stateInfo)
-	s.broadcastUpdate(update)
-}
-
-func (s *StateServer) OnConditionPartChanged(part interface{}) {
-	log := logger.DefaultLogger()
-	condPart, ok := part.(*entity.ConditionPart)
-	if !ok {
-		log.Error("Invalid part type in OnConditionPartChanged")
-		return
-	}
-
-	log.Debug("StateServer.OnConditionPartChanged", zap.Int64("partId", int64(condPart.ID)))
-	currentPhase := s.stateFacade.GetCurrentPhase()
-	stateInfo := s.getGameStateInfo(currentPhase)
 
 	update := s.EditResponse(currentPhase.CurrentState(), currentPhase, stateInfo)
 	s.broadcastUpdate(update)

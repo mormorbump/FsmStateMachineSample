@@ -67,7 +67,7 @@ func TestPhaseControllerWithMultipleConditions(t *testing.T) {
 	cond2_1.AddConditionObserver(phase2)
 	cond2_2.AddConditionObserver(phase2)
 
-	// Phase3: Single条件（1つの条件のみ）
+	// Phase3: Or条件（1つの条件のみ）
 	part3 := entity.NewConditionPart(5, "Counter_Part_3")
 	part3.ReferenceValueInt = 1
 	part3.ComparisonOperator = value.ComparisonOperatorGTE
@@ -78,7 +78,7 @@ func TestPhaseControllerWithMultipleConditions(t *testing.T) {
 		t.Fatalf("Failed to initialize strategies for cond3: %v", err)
 	}
 
-	phase3 := entity.NewPhase("PHASE3", 3, []*entity.Condition{cond3}, value.ConditionTypeSingle, value.GameRule_Animation)
+	phase3 := entity.NewPhase("PHASE3", 3, []*entity.Condition{cond3}, value.ConditionTypeOr, value.GameRule_Animation)
 	part3.AddConditionPartObserver(cond3)
 	cond3.AddConditionObserver(phase3)
 
@@ -170,8 +170,8 @@ func TestPhaseControllerWithMultipleConditions(t *testing.T) {
 		assert.Equal(t, value.StateNext, currentPhase.CurrentState())
 	})
 
-	// Phase3（Single条件）のテスト
-	t.Run("Phase3_Single_Condition", func(t *testing.T) {
+	// Phase3（Or条件）のテスト
+	t.Run("Phase3_Or_Condition", func(t *testing.T) {
 		// リセットして初期状態に
 		err := controller.Reset(ctx)
 		assert.NoError(t, err)

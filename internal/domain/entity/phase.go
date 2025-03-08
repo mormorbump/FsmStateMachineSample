@@ -29,7 +29,7 @@ type Phase struct {
 	StartTime           *time.Time
 	FinishTime          *time.Time
 	fsm                 *fsm.FSM
-	observers           []service.StateObserver
+	observers           []service.PhaseObserver
 	mu                  sync.RWMutex
 	log                 *zap.Logger
 }
@@ -47,7 +47,7 @@ func NewPhase(name string, order int, conditions []*Condition, conditionType val
 		SatisfiedConditions: make(map[value.ConditionID]bool),
 		Conditions:          make(map[value.ConditionID]*Condition),
 		ConditionIDs:        make([]value.ConditionID, 0),
-		observers:           make([]service.StateObserver, 0),
+		observers:           make([]service.PhaseObserver, 0),
 		IsClear:             false,
 		StartTime:           nil,
 		FinishTime:          nil,
@@ -91,11 +91,11 @@ func NewPhase(name string, order int, conditions []*Condition, conditionType val
 			p.log.Debug("Phase state changed", zap.String("Name", p.Name), zap.String("state", p.CurrentState()))
 
 			if e.Dst != value.StateFinish {
-				p.log.Debug("Calling NotifyStateChanged",
+				p.log.Debug("Calling NotifyPhaseChanged",
 					zap.String("phase", p.Name),
 					zap.String("state", p.CurrentState()),
 					zap.Bool("isNext", p.CurrentState() == value.StateNext))
-				p.NotifyStateChanged(p.CurrentState())
+				p.NotifyPhaseChanged()
 			}
 		},
 	}
@@ -122,21 +122,38 @@ func (p *Phase) OnConditionChanged(condition interface{}) {
 		return
 	}
 
-	p.log.Debug("Phase.OnConditionChanged")
+	if cond.CurrentState() != value.StateSatisfied {
+		return
+	}
+
 	p.mu.Lock()
 	p.SatisfiedConditions[cond.ID] = true
 	satisfied := p.checkConditionsSatisfied()
 	if satisfied {
 		p.IsClear = true
 	}
+	currentState := p.CurrentState()
 	p.mu.Unlock()
 
-	p.log.Debug("Phase.OnConditionChanged", zap.String("name", p.Name), zap.Bool("satisfied", satisfied), zap.Int64("condition_id", int64(cond.ID)))
-	if satisfied {
+	p.log.Debug("Phase.OnConditionChanged",
+		zap.String("name", p.Name),
+		zap.Bool("satisfied", satisfied),
+		zap.Int64("condition_id", int64(cond.ID)),
+		zap.String("current_state", currentState))
+
+	// 条件が満たされ、かつフェーズがactive状態の場合のみNextを呼び出す
+	if satisfied && currentState == value.StateActive {
+		p.log.Debug("Phase.OnConditionChanged: Moving to next state",
+			zap.String("phase", p.Name),
+			zap.String("from_state", currentState))
 		err := p.Next(context.Background())
 		if err != nil {
 			p.log.Error("Failed to move to next state", zap.Error(err))
 		}
+	} else if satisfied && currentState != value.StateActive {
+		p.log.Debug("Phase.OnConditionChanged: Not moving to next state because phase is not active",
+			zap.String("phase", p.Name),
+			zap.String("current_state", currentState))
 	}
 }
 
@@ -147,7 +164,7 @@ func (p *Phase) checkConditionsSatisfied() bool {
 	}
 
 	switch p.ConditionType {
-	case value.ConditionTypeOr, value.ConditionTypeSingle:
+	case value.ConditionTypeOr:
 		return len(p.SatisfiedConditions) > 0
 	case value.ConditionTypeAnd:
 		return len(p.SatisfiedConditions) == len(p.ConditionIDs)
@@ -222,7 +239,7 @@ func (p *Phase) Reset(ctx context.Context) error {
 }
 
 // AddObserver オブザーバーを追加します
-func (p *Phase) AddObserver(observer service.StateObserver) {
+func (p *Phase) AddObserver(observer service.PhaseObserver) {
 	if observer == nil {
 		return
 	}
@@ -232,7 +249,7 @@ func (p *Phase) AddObserver(observer service.StateObserver) {
 }
 
 // RemoveObserver オブザーバーを削除します
-func (p *Phase) RemoveObserver(observer service.StateObserver) {
+func (p *Phase) RemoveObserver(observer service.PhaseObserver) {
 	if observer == nil {
 		return
 	}
@@ -247,14 +264,13 @@ func (p *Phase) RemoveObserver(observer service.StateObserver) {
 }
 
 // NotifyStateChanged 状態変更を通知します
-func (p *Phase) NotifyStateChanged(state string) {
-	p.log.Debug("Phase.NotifyStateChanged",
+func (p *Phase) NotifyPhaseChanged() {
+	p.log.Debug("Phase.NotifyPhaseChanged",
 		zap.String("phase", p.Name),
-		zap.String("state", state),
 		zap.Int("observers", len(p.observers)))
 
 	p.mu.RLock()
-	observers := make([]service.StateObserver, len(p.observers))
+	observers := make([]service.PhaseObserver, len(p.observers))
 	copy(observers, p.observers)
 	p.mu.RUnlock()
 
@@ -262,7 +278,7 @@ func (p *Phase) NotifyStateChanged(state string) {
 		p.log.Debug("Notifying observer",
 			zap.Int("index", i),
 			zap.String("observer", fmt.Sprintf("%p", observer)))
-		observer.OnStateChanged(state)
+		observer.OnPhaseChanged(p)
 	}
 }
 

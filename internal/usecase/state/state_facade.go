@@ -47,7 +47,7 @@ func NewStateFacade() StateFacade {
 	if err := cond1_2.InitializePartStrategies(factory); err != nil {
 		panic(err)
 	}
-	phase1 := entity.NewPhase("PHASE1", 1, []*entity.Condition{cond1_1, cond1_2}, value.ConditionTypeOr, value.GameRule_Animation)
+	phase1 := entity.NewPhase("PHASE1", 1, []*entity.Condition{cond1_1, cond1_2}, value.ConditionTypeAnd, value.GameRule_Animation)
 	part1_1.AddConditionPartObserver(cond1_1)
 	part1_2.AddConditionPartObserver(cond1_2)
 	cond1_1.AddConditionObserver(phase1)
@@ -62,7 +62,7 @@ func NewStateFacade() StateFacade {
 	if err := cond2.InitializePartStrategies(factory); err != nil {
 		panic(err)
 	}
-	phase2 := entity.NewPhase("PHASE2", 2, []*entity.Condition{cond2}, value.ConditionTypeSingle, value.GameRule_Animation)
+	phase2 := entity.NewPhase("PHASE2", 2, []*entity.Condition{cond2}, value.ConditionTypeOr, value.GameRule_Animation)
 	part2.AddConditionPartObserver(cond2)
 	cond2.AddConditionObserver(phase2)
 	log.Debug("StateFacade initialized", zap.Any("phase2", phase2))
@@ -75,7 +75,7 @@ func NewStateFacade() StateFacade {
 	if err := cond3.InitializePartStrategies(factory); err != nil {
 		panic(err)
 	}
-	phase3 := entity.NewPhase("PHASE3", 3, []*entity.Condition{cond3}, value.ConditionTypeSingle, value.GameRule_Animation)
+	phase3 := entity.NewPhase("PHASE3", 3, []*entity.Condition{cond3}, value.ConditionTypeOr, value.GameRule_Animation)
 	part3.AddConditionPartObserver(cond3)
 	cond3.AddConditionObserver(phase3)
 	log.Debug("StateFacade initialized", zap.Any("phase3", phase3))

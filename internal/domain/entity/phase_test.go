@@ -10,17 +10,18 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// MockPhaseStateObserver は StateObserver インターフェースのモック実装です
+// MockPhaseStateObserver は PhaseObserver インターフェースのモック実装です
 type MockPhaseStateObserver struct {
-	States []string
+	Phases []*Phase
 }
 
 // インターフェースの実装を確認
-var _ service.StateObserver = (*MockPhaseStateObserver)(nil)
+var _ service.PhaseObserver = (*MockPhaseStateObserver)(nil)
 
-// OnStateChanged は状態変更を記録します
-func (m *MockPhaseStateObserver) OnStateChanged(state string) {
-	m.States = append(m.States, state)
+// OnPhaseChanged は状態変更を記録します
+func (m *MockPhaseStateObserver) OnPhaseChanged(phase interface{}) {
+	p, _ := phase.(*Phase)
+	m.Phases = append(m.Phases, p)
 }
 
 func TestNewPhase(t *testing.T) {
@@ -55,7 +56,7 @@ func TestNewPhase(t *testing.T) {
 
 func TestPhaseStateTransitions(t *testing.T) {
 	// テスト用のPhase
-	phase := NewPhase("Test Phase", 1, []*Condition{}, value.ConditionTypeSingle, value.GameRule_Shooting)
+	phase := NewPhase("Test Phase", 1, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting)
 	ctx := context.Background()
 
 	// Activate: Ready -> Active
@@ -117,7 +118,7 @@ func TestPhaseWithConditions(t *testing.T) {
 
 func TestPhaseObserver(t *testing.T) {
 	// テスト用のPhase
-	phase := NewPhase("Test Phase", 1, []*Condition{}, value.ConditionTypeSingle, value.GameRule_Shooting)
+	phase := NewPhase("Test Phase", 1, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting)
 
 	// モックオブザーバーの作成
 	mockObserver := &MockPhaseStateObserver{}
@@ -126,17 +127,17 @@ func TestPhaseObserver(t *testing.T) {
 	phase.AddObserver(mockObserver)
 
 	// 状態変更の通知
-	phase.NotifyStateChanged("test_state")
-	assert.Len(t, mockObserver.States, 1)
-	assert.Equal(t, "test_state", mockObserver.States[0])
+	phase.NotifyPhaseChanged()
+	assert.Len(t, mockObserver.Phases, 1)
+	assert.Equal(t, "test_state", mockObserver.Phases[0])
 
 	// オブザーバーの削除
 	phase.RemoveObserver(mockObserver)
 
 	// 状態変更の通知（オブザーバーが削除されているので通知されない）
-	mockObserver.States = nil
-	phase.NotifyStateChanged("another_state")
-	assert.Len(t, mockObserver.States, 0)
+	mockObserver.Phases = nil
+	phase.NotifyPhaseChanged()
+	assert.Len(t, mockObserver.Phases, 0)
 }
 
 func TestPhaseConditionTypes(t *testing.T) {
@@ -194,13 +195,6 @@ func TestPhaseConditionTypes(t *testing.T) {
 			satisfySecond: true,
 			expectedClear: true,
 		},
-		{
-			name:          "Single_First",
-			conditionType: value.ConditionTypeSingle,
-			satisfyFirst:  true,
-			satisfySecond: false,
-			expectedClear: true,
-		},
 	}
 
 	for _, tc := range testCases {
@@ -230,7 +224,7 @@ func TestPhaseConditionTypes(t *testing.T) {
 
 func TestPhaseGetStateInfo(t *testing.T) {
 	// テスト用のPhase
-	phase := NewPhase("Test Phase", 1, []*Condition{}, value.ConditionTypeSingle, value.GameRule_Shooting)
+	phase := NewPhase("Test Phase", 1, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting)
 	ctx := context.Background()
 
 	// Ready状態
@@ -266,9 +260,9 @@ func TestPhaseGetStateInfo(t *testing.T) {
 
 func TestPhasesCollection(t *testing.T) {
 	// テスト用のPhase
-	phase1 := NewPhase("Phase 1", 1, []*Condition{}, value.ConditionTypeSingle, value.GameRule_Shooting)
-	phase2 := NewPhase("Phase 2", 2, []*Condition{}, value.ConditionTypeSingle, value.GameRule_Shooting)
-	phase3 := NewPhase("Phase 3", 3, []*Condition{}, value.ConditionTypeSingle, value.GameRule_Shooting)
+	phase1 := NewPhase("Phase 1", 1, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting)
+	phase2 := NewPhase("Phase 2", 2, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting)
+	phase3 := NewPhase("Phase 3", 3, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting)
 
 	// Phasesコレクションの作成
 	phases := Phases{phase1, phase2, phase3}
@@ -339,7 +333,7 @@ func TestPhaseReset(t *testing.T) {
 	condition.AddPart(part)
 
 	// テスト用のPhase
-	phase := NewPhase("Test Phase", 1, []*Condition{condition}, value.ConditionTypeSingle, value.GameRule_Shooting)
+	phase := NewPhase("Test Phase", 1, []*Condition{condition}, value.ConditionTypeOr, value.GameRule_Shooting)
 	ctx := context.Background()
 
 	// Activate

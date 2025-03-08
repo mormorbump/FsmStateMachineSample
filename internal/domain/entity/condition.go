@@ -26,7 +26,7 @@ type Condition struct {
 	StartTime      *time.Time
 	FinishTime     *time.Time
 	fsm            *fsm.FSM
-	stateObservers []service.StateObserver
+	stateObservers []service.PhaseObserver
 	condObservers  []service.ConditionObserver
 	mu             sync.RWMutex
 	log            *zap.Logger
@@ -41,7 +41,7 @@ func NewCondition(id value.ConditionID, label string, kind value.ConditionKind) 
 		Label:          label,
 		Kind:           kind,
 		Parts:          make(map[value.ConditionPartID]*ConditionPart),
-		stateObservers: make([]service.StateObserver, 0),
+		stateObservers: make([]service.PhaseObserver, 0),
 		condObservers:  make([]service.ConditionObserver, 0),
 		satisfiedParts: make(map[value.ConditionPartID]bool),
 		IsClear:        false,
@@ -75,7 +75,7 @@ func NewCondition(id value.ConditionID, label string, kind value.ConditionKind) 
 				zap.Int64("condition_id", int64(c.ID)))
 
 			c.IsClear = true
-			c.NotifyConditionChanged(c)
+			c.NotifyConditionChanged()
 		},
 		"enter_" + value.StateReady: func(ctx context.Context, e *fsm.Event) {
 			c.IsClear = false
@@ -93,7 +93,7 @@ func NewCondition(id value.ConditionID, label string, kind value.ConditionKind) 
 			c.log.Debug("Condition state transition",
 				zap.String("from", e.Src),
 				zap.String("to", e.Dst))
-			c.NotifyStateChanged(e.Dst)
+			c.NotifyConditionChanged()
 		},
 	}
 
@@ -132,17 +132,37 @@ func (c *Condition) OnConditionPartChanged(part interface{}) {
 	}
 
 	c.mu.Lock()
+	// パーツの状態に応じてsatisfiedPartsマップを更新
 	if condPart.IsSatisfied() {
 		c.satisfiedParts[condPart.ID] = true
+	} else {
+		// パーツがsatisfiedでない場合はマップから削除
+		delete(c.satisfiedParts, condPart.ID)
 	}
+	
+	// 全てのパーツの状態をログに出力
+	partsStatus := make(map[value.ConditionPartID]bool)
+	for id, part := range c.Parts {
+		partsStatus[id] = part.IsSatisfied()
+	}
+	
+	satisfied := c.checkAllPartsSatisfied()
 	c.mu.Unlock()
 
 	c.log.Debug("Condition: OnConditionPartChanged",
 		zap.Int64("condition_id", int64(c.ID)),
 		zap.Int64("part_id", int64(condPart.ID)),
-		zap.Bool("satisfied", c.checkAllPartsSatisfied()),
+		zap.Bool("part_satisfied", condPart.IsSatisfied()),
+		zap.Any("all_parts_status", partsStatus),
+		zap.Int("satisfied_parts_count", len(c.satisfiedParts)),
+		zap.Int("total_parts_count", len(c.Parts)),
+		zap.Bool("all_satisfied", satisfied),
 	)
-	if c.checkAllPartsSatisfied() {
+	
+	// 条件が満たされた場合のみCompleteを呼び出す
+	if satisfied && c.CurrentState() != value.StateSatisfied {
+		c.log.Debug("Condition: All parts satisfied, completing condition",
+			zap.Int64("condition_id", int64(c.ID)))
 		_ = c.Complete(context.Background())
 	}
 }
@@ -255,7 +275,7 @@ func (c *Condition) InitializePartStrategies(factory service.StrategyFactory) er
 }
 
 // AddObserver オブザーバーを追加します
-func (c *Condition) AddObserver(observer service.StateObserver) {
+func (c *Condition) AddObserver(observer service.PhaseObserver) {
 	if observer == nil {
 		return
 	}
@@ -265,7 +285,7 @@ func (c *Condition) AddObserver(observer service.StateObserver) {
 }
 
 // RemoveObserver オブザーバーを削除します
-func (c *Condition) RemoveObserver(observer service.StateObserver) {
+func (c *Condition) RemoveObserver(observer service.PhaseObserver) {
 	if observer == nil {
 		return
 	}
@@ -276,18 +296,6 @@ func (c *Condition) RemoveObserver(observer service.StateObserver) {
 			c.stateObservers = append(c.stateObservers[:i], c.stateObservers[i+1:]...)
 			return
 		}
-	}
-}
-
-// NotifyStateChanged 状態変更を通知します
-func (c *Condition) NotifyStateChanged(state string) {
-	c.mu.RLock()
-	observers := make([]service.StateObserver, len(c.stateObservers))
-	copy(observers, c.stateObservers)
-	c.mu.RUnlock()
-
-	for _, observer := range observers {
-		observer.OnStateChanged(state)
 	}
 }
 
@@ -317,13 +325,13 @@ func (c *Condition) RemoveConditionObserver(observer service.ConditionObserver) 
 }
 
 // NotifyConditionChanged 条件変更を通知します
-func (c *Condition) NotifyConditionChanged(condition interface{}) {
+func (c *Condition) NotifyConditionChanged() {
 	c.mu.RLock()
 	observers := make([]service.ConditionObserver, len(c.condObservers))
 	copy(observers, c.condObservers)
 	c.mu.RUnlock()
 
 	for _, observer := range observers {
-		observer.OnConditionChanged(condition)
+		observer.OnConditionChanged(c)
 	}
 }

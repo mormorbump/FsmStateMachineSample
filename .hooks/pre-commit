@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+
+# プロジェクトのルートディレクトリを取得
+ROOT_DIR=$(git rev-parse --show-toplevel)
+
+# カレントディレクトリを表示（デバッグ用）
+echo "現在のディレクトリ: $(pwd)"
+echo "ルートディレクトリ: $ROOT_DIR"
+
+# Goスクリプトを実行
+# 注: このスクリプトはgo.modファイルがあるディレクトリで実行する必要があります
+cd "$ROOT_DIR" && go run ".hooks/scripts/pre-commit-check.go"

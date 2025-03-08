@@ -17,13 +17,9 @@ import (
 type PhaseController struct {
 	phases       entity.Phases
 	currentPhase *entity.Phase
-	observers    struct {
-		state         []service.StateObserver
-		condition     []service.ConditionObserver
-		conditionPart []service.ConditionPartObserver
-	}
-	mu  sync.RWMutex
-	log *zap.Logger
+	observers    []service.ControllerObserver
+	mu           sync.RWMutex
+	log          *zap.Logger
 }
 
 // NewPhaseController は新しいPhaseControllerを作成します
@@ -33,17 +29,9 @@ func NewPhaseController(phases entity.Phases) *PhaseController {
 		log.Error("PhaseController", zap.String("error", "No phases found"))
 	}
 	pc := &PhaseController{
-		phases: phases,
-		observers: struct {
-			state         []service.StateObserver
-			condition     []service.ConditionObserver
-			conditionPart []service.ConditionPartObserver
-		}{
-			state:         make([]service.StateObserver, 0),
-			condition:     make([]service.ConditionObserver, 0),
-			conditionPart: make([]service.ConditionPartObserver, 0),
-		},
-		log: log,
+		phases:    phases,
+		observers: make([]service.ControllerObserver, 0),
+		log:       log,
 	}
 
 	log.Debug("PhaseController initialized", zap.Int("phases count", len(phases)), zap.String("instance", fmt.Sprintf("%p", pc)))
@@ -61,14 +49,15 @@ func NewPhaseController(phases entity.Phases) *PhaseController {
 	return pc
 }
 
-// OnStateChanged は状態変更通知を受け取るメソッドです
-func (pc *PhaseController) OnStateChanged(stateName string) {
-	pc.log.Debug("PhaseController.OnStateChanged", zap.String("state", stateName),
+// OnPhaseChanged は状態変更通知を受け取るメソッドです
+func (pc *PhaseController) OnPhaseChanged(phaseEntity interface{}) {
+	phase := phaseEntity.(*entity.Phase)
+	pc.log.Debug("PhaseController.OnPhaseChanged", zap.String("state", phase.CurrentState()),
 		zap.String("expected", value.StateNext),
-		zap.Bool("equals", stateName == value.StateNext))
-	pc.NotifyStateChanged(stateName)
+		zap.Bool("equals", phase.CurrentState() == value.StateNext))
+	pc.NotifyEntityChanged(phase)
 
-	if stateName == value.StateNext {
+	if phase.CurrentState() == value.StateNext {
 		time.Sleep(1 * time.Second)
 		pc.log.Debug("start next phase!!!!!!!!!!")
 		_ = pc.Start(context.Background())
@@ -77,24 +66,14 @@ func (pc *PhaseController) OnStateChanged(stateName string) {
 
 // OnConditionChanged は条件変更通知を受け取るメソッドです
 func (pc *PhaseController) OnConditionChanged(condition interface{}) {
-	cond, ok := condition.(*entity.Condition)
-	if !ok {
-		pc.log.Error("Invalid condition type in OnConditionChanged")
-		return
-	}
-	pc.log.Debug("PhaseController.OnConditionChanged", zap.Int64("conditionId", int64(cond.ID)))
-	pc.NotifyConditionChanged(condition)
+	pc.log.Debug("PhaseController.OnConditionChanged", zap.Any("condition", condition))
+	pc.NotifyEntityChanged(condition)
 }
 
 // OnConditionPartChanged は条件パーツ変更通知を受け取るメソッドです
 func (pc *PhaseController) OnConditionPartChanged(part interface{}) {
-	condPart, ok := part.(*entity.ConditionPart)
-	if !ok {
-		pc.log.Error("Invalid part type in OnConditionPartChanged")
-		return
-	}
-	pc.log.Debug("PhaseController.OnConditionPartChanged", zap.Int64("partId", int64(condPart.ID)))
-	pc.NotifyConditionPartChanged(part)
+	pc.log.Debug("PhaseController.OnConditionPartChanged", zap.Any("part", part))
+	pc.NotifyEntityChanged(part)
 }
 
 // GetCurrentPhase は現在のフェーズを取得します
@@ -141,11 +120,10 @@ func (pc *PhaseController) Start(ctx context.Context) error {
 	// 次のフェーズを取得して活性化
 	nextPhase, err := pc.phases.ProcessAndActivateByNextOrder(ctx)
 
-	// 存在しなければ初期化してからfinishで終了
 	if nextPhase == nil {
 		pc.log.Debug("PhaseController.Start", zap.String("action", "No phases found. notify finish"))
-		pc.NotifyStateChanged(value.StateFinish)
-		pc.SetCurrentPhase(pc.phases[0])
+		pc.NotifyEntityChanged(nil)
+		//pc.SetCurrentPhase(pc.phases[0])
 		return err
 	}
 	pc.SetCurrentPhase(nextPhase)
@@ -175,95 +153,30 @@ func (pc *PhaseController) Reset(ctx context.Context) error {
 	return nil
 }
 
-// AddStateObserver 状態オブザーバーを追加します
-func (pc *PhaseController) AddStateObserver(observer service.StateObserver) {
+func (pc *PhaseController) AddControllerObserver(observer service.ControllerObserver) {
 	pc.mu.Lock()
 	defer pc.mu.Unlock()
-	pc.observers.state = append(pc.observers.state, observer)
+	pc.observers = append(pc.observers, observer)
 }
 
-// RemoveStateObserver 状態オブザーバーを削除します
-func (pc *PhaseController) RemoveStateObserver(observer service.StateObserver) {
+func (pc *PhaseController) RemoveControllerObserver(observer service.ControllerObserver) {
 	pc.mu.Lock()
 	defer pc.mu.Unlock()
-	for i, obs := range pc.observers.state {
+	for i, obs := range pc.observers {
 		if obs == observer {
-			pc.observers.state = append(pc.observers.state[:i], pc.observers.state[i+1:]...)
+			pc.observers = append(pc.observers[:i], pc.observers[i+1:]...)
 			break
 		}
 	}
 }
 
-// NotifyStateChanged 状態変更を通知します
-func (pc *PhaseController) NotifyStateChanged(state string) {
+func (pc *PhaseController) NotifyEntityChanged(entity interface{}) {
 	pc.mu.RLock()
-	observers := make([]service.StateObserver, len(pc.observers.state))
-	copy(observers, pc.observers.state)
+	observers := make([]service.ControllerObserver, len(pc.observers))
+	copy(observers, pc.observers)
 	pc.mu.RUnlock()
 
 	for _, observer := range observers {
-		observer.OnStateChanged(state)
-	}
-}
-
-// AddConditionObserver 条件オブザーバーを追加します
-func (pc *PhaseController) AddConditionObserver(observer service.ConditionObserver) {
-	pc.mu.Lock()
-	defer pc.mu.Unlock()
-	pc.observers.condition = append(pc.observers.condition, observer)
-}
-
-// RemoveConditionObserver 条件オブザーバーを削除します
-func (pc *PhaseController) RemoveConditionObserver(observer service.ConditionObserver) {
-	pc.mu.Lock()
-	defer pc.mu.Unlock()
-	for i, obs := range pc.observers.condition {
-		if obs == observer {
-			pc.observers.condition = append(pc.observers.condition[:i], pc.observers.condition[i+1:]...)
-			break
-		}
-	}
-}
-
-// NotifyConditionChanged 条件変更を通知します
-func (pc *PhaseController) NotifyConditionChanged(condition interface{}) {
-	pc.mu.RLock()
-	observers := make([]service.ConditionObserver, len(pc.observers.condition))
-	copy(observers, pc.observers.condition)
-	pc.mu.RUnlock()
-
-	for _, observer := range observers {
-		observer.OnConditionChanged(condition)
-	}
-}
-
-// AddConditionPartObserver 条件パーツオブザーバーを追加します
-func (pc *PhaseController) AddConditionPartObserver(observer service.ConditionPartObserver) {
-	pc.mu.Lock()
-	defer pc.mu.Unlock()
-	pc.observers.conditionPart = append(pc.observers.conditionPart, observer)
-}
-
-// RemoveConditionPartObserver 条件パーツオブザーバーを削除します
-func (pc *PhaseController) RemoveConditionPartObserver(observer service.ConditionPartObserver) {
-	pc.mu.Lock()
-	defer pc.mu.Unlock()
-	for i, obs := range pc.observers.conditionPart {
-		if obs == observer {
-			pc.observers.conditionPart = append(pc.observers.conditionPart[:i], pc.observers.conditionPart[i+1:]...)
-			break
-		}
-	}
-}
-
-// NotifyConditionPartChanged 条件パーツ変更を通知します
-func (pc *PhaseController) NotifyConditionPartChanged(part interface{}) {
-	pc.mu.RLock()
-	observers := make([]service.ConditionPartObserver, len(pc.observers.conditionPart))
-	copy(observers, pc.observers.conditionPart)
-	pc.mu.RUnlock()
-
-	for _, observer := range observers {
-		observer.OnConditionPartChanged(part)
+		observer.OnEntityChanged(entity)
 	}
 }

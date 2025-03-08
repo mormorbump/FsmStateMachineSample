@@ -156,7 +156,7 @@ func (p *ConditionPart) OnUpdated(event string) {
 	case event == value.EventProcess:
 		p.log.Debug("ConditionPart.OnUpdated: Calling Process for EventProcess")
 	}
-	p.NotifyPartChanged()
+	p.NotifyPartChanged(p)
 }
 
 // Validate は条件パーツの妥当性を検証します
@@ -333,7 +333,7 @@ func (p *ConditionPart) RemoveConditionPartObserver(observer service.ConditionPa
 }
 
 // NotifyPartChanged 状態変更を通知
-func (p *ConditionPart) NotifyPartChanged() {
+func (p *ConditionPart) NotifyPartChanged(part interface{}) {
 	p.mu.RLock()
 	observers := make([]service.ConditionPartObserver, len(p.partObservers))
 	copy(observers, p.partObservers)

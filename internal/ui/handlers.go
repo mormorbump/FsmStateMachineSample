@@ -31,7 +31,7 @@ func (s *StateServer) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// 初期状態を送信
 	currentPhase := s.stateFacade.GetCurrentPhase()
 	if currentPhase != nil {
-		s.OnStateChanged(currentPhase.CurrentState())
+		s.OnEntityChanged(currentPhase.CurrentState())
 	}
 
 	go func() { _ = s.recvWsMessage(conn) }()

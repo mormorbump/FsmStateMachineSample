@@ -10,18 +10,18 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// MockStateObserver は StateObserver インターフェースのモック実装です
+// MockStateObserver は PhaseObserver インターフェースのモック実装です
 type MockStateObserver struct {
 	States []string
 }
 
-// OnStateChanged は状態変更を記録します
-func (m *MockStateObserver) OnStateChanged(state string) {
+// OnPhaseChanged は状態変更を記録します
+func (m *MockStateObserver) OnPhaseChanged(state string) {
 	m.States = append(m.States, state)
 }
 
 // インターフェースの実装を確認
-var _ service.StateObserver = (*MockStateObserver)(nil)
+var _ service.PhaseObserver = (*MockStateObserver)(nil)
 
 // MockConditionObserver は ConditionObserver インターフェースのモック実装です
 type MockConditionObserver struct {
@@ -68,9 +68,9 @@ func createTestPhaseController() (*PhaseController, entity.Phases) {
 	condition2.AddPart(part2)
 
 	// テスト用のフェーズ
-	phase1 := entity.NewPhase("Phase 1", 1, []*entity.Condition{condition1}, value.ConditionTypeSingle, value.GameRule_Shooting)
-	phase2 := entity.NewPhase("Phase 2", 2, []*entity.Condition{condition2}, value.ConditionTypeSingle, value.GameRule_Shooting)
-	phase3 := entity.NewPhase("Phase 3", 3, []*entity.Condition{}, value.ConditionTypeSingle, value.GameRule_Shooting)
+	phase1 := entity.NewPhase("Phase 1", 1, []*entity.Condition{condition1}, value.ConditionTypeOr, value.GameRule_Shooting)
+	phase2 := entity.NewPhase("Phase 2", 2, []*entity.Condition{condition2}, value.ConditionTypeOr, value.GameRule_Shooting)
+	phase3 := entity.NewPhase("Phase 3", 3, []*entity.Condition{}, value.ConditionTypeOr, value.GameRule_Shooting)
 
 	// フェーズコレクション
 	phases := entity.Phases{phase1, phase2, phase3}
@@ -245,7 +245,7 @@ func TestPhaseControllerConditionPartObserver(t *testing.T) {
 	assert.Len(t, mockObserver.Parts, 0)
 }
 
-func TestPhaseControllerOnStateChanged(t *testing.T) {
+func TestPhaseControllerOnPhaseChanged(t *testing.T) {
 	// テスト用のフェーズとコントローラーを作成
 	controller, _ := createTestPhaseController()
 
@@ -256,13 +256,13 @@ func TestPhaseControllerOnStateChanged(t *testing.T) {
 	controller.AddStateObserver(mockObserver)
 
 	// 通常の状態変更
-	controller.OnStateChanged("test_state")
+	controller.OnPhaseChanged("test_state")
 	assert.Len(t, mockObserver.States, 1)
 	assert.Equal(t, "test_state", mockObserver.States[0])
 
 	// Next状態の変更（自動的に次のフェーズに進む）
 	mockObserver.States = nil
-	controller.OnStateChanged(value.StateNext)
+	controller.OnPhaseChanged(value.StateNext)
 	assert.Len(t, mockObserver.States, 1)
 	assert.Equal(t, value.StateNext, mockObserver.States[0])
 }

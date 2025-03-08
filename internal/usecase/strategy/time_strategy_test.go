@@ -104,7 +104,7 @@ func TestTimeStrategyEvaluate(t *testing.T) {
 	// テスト用のConditionPartを作成
 	part := entity.NewConditionPart(1, "Test Part")
 	part.ReferenceValueInt = 1 // 1秒
-	
+
 	// 初期化（これによりlogが設定される）
 	err := strategy.Initialize(part)
 	assert.NoError(t, err)
@@ -264,24 +264,28 @@ func TestTimeStrategyRun(t *testing.T) {
 	err := strategy.Initialize(part)
 	assert.NoError(t, err)
 
+	// インターバルを短く設定
 	strategy.interval = 100 * time.Millisecond
-	strategy.ticker = time.NewTicker(strategy.interval)
 
 	// モックオブザーバーの作成
 	mockObserver := &MockTimeStrategyObserver{}
 	strategy.AddObserver(mockObserver)
 
-	// タイマーループを開始（ゴルーチンで実行）
-	go strategy.run()
+	// タイマーを開始（Startメソッドを使用）
+	ctx := context.Background()
+	err = strategy.Start(ctx, part)
+	assert.NoError(t, err)
+	assert.True(t, strategy.isRunning)
 
-	// 少し待機してタイマーイベントが発生するのを待つ
-	time.Sleep(150 * time.Millisecond)
+	// 少し長めに待機してタイマーイベントが確実に発生するのを待つ
+	time.Sleep(200 * time.Millisecond)
 
 	// タイマーループを停止
-	close(strategy.stopChan)
+	err = strategy.Cleanup()
+	assert.NoError(t, err)
 
 	// タイマーイベントが発生したことを確認
-	assert.GreaterOrEqual(t, len(mockObserver.Events), 1)
+	assert.GreaterOrEqual(t, len(mockObserver.Events), 1, "タイマーイベントが発生していません")
 	if len(mockObserver.Events) > 0 {
 		assert.Equal(t, value.EventTimeout, mockObserver.Events[0])
 	}

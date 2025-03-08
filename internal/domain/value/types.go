@@ -50,7 +50,6 @@ const (
 	ConditionTypeUnspecified ConditionType = iota
 	ConditionTypeAnd                       // すべての条件を満たす必要がある
 	ConditionTypeOr                        // いずれかの条件を満たせばよい
-	ConditionTypeSingle                    // 単一条件
 )
 
 // ゲーム状態の定義

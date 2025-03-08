@@ -9,13 +9,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// MockStateObserver は StateObserver インターフェースのモック実装です
+// MockStateObserver は PhaseObserver インターフェースのモック実装です
 type MockStateObserver struct {
 	States []string
 }
 
-// OnStateChanged は状態変更を記録します
-func (m *MockStateObserver) OnStateChanged(state string) {
+// OnPhaseChanged は状態変更を記録します
+func (m *MockStateObserver) OnPhaseChanged(state string) {
 	m.States = append(m.States, state)
 }
 
@@ -150,13 +150,8 @@ func TestConditionObserver(t *testing.T) {
 	condition.AddObserver(mockStateObserver)
 	condition.AddConditionObserver(mockConditionObserver)
 
-	// 状態変更の通知
-	condition.NotifyStateChanged("test_state")
-	assert.Len(t, mockStateObserver.States, 1)
-	assert.Equal(t, "test_state", mockStateObserver.States[0])
-
 	// 条件変更の通知
-	condition.NotifyConditionChanged(condition)
+	condition.NotifyConditionChanged()
 	assert.Len(t, mockConditionObserver.Conditions, 1)
 	assert.Equal(t, condition, mockConditionObserver.Conditions[0])
 
@@ -167,8 +162,7 @@ func TestConditionObserver(t *testing.T) {
 	// 状態変更の通知（オブザーバーが削除されているので通知されない）
 	mockStateObserver.States = nil
 	mockConditionObserver.Conditions = nil
-	condition.NotifyStateChanged("another_state")
-	condition.NotifyConditionChanged(condition)
+	condition.NotifyConditionChanged()
 	assert.Len(t, mockStateObserver.States, 0)
 	assert.Len(t, mockConditionObserver.Conditions, 0)
 }

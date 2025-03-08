@@ -184,10 +184,10 @@ classDiagram
         +InitializePartStrategies(factory) error
         +AddObserver(observer)
         +RemoveObserver(observer)
-        +NotifyStateChanged(state)
+        +NotifyStateChanged()
         +AddConditionObserver(observer)
         +RemoveConditionObserver(observer)
-        +NotifyConditionChanged(condition)
+        +NotifyConditionChanged()
     }
 
     class ConditionPart {
@@ -252,7 +252,7 @@ classDiagram
         -mu sync.RWMutex
         -log *zap.Logger
         +NewPhaseController(phases)
-        +OnStateChanged(stateName)
+        +OnPhaseChanged(stateName)
         +OnConditionChanged(condition)
         +OnConditionPartChanged(part)
         +GetCurrentPhase() *Phase
@@ -265,7 +265,7 @@ classDiagram
         +NotifyStateChanged(state)
         +AddConditionObserver(observer)
         +RemoveConditionObserver(observer)
-        +NotifyConditionChanged(condition)
+        +NotifyConditionChanged()
         +AddConditionPartObserver(observer)
         +RemoveConditionPartObserver(observer)
         +NotifyConditionPartChanged(part)
@@ -346,7 +346,7 @@ classDiagram
 
     class StateObserver {
         <<interface>>
-        +OnStateChanged(state)
+        +OnPhaseChanged(state)
     }
 
     class StrategyObserver {
@@ -364,13 +364,6 @@ classDiagram
         +OnConditionChanged(condition)
     }
 
-    class StateSubject {
-        <<interface>>
-        +AddObserver(observer)
-        +RemoveObserver(observer)
-        +NotifyStateChanged(state)
-    }
-
     class StrategySubject {
         <<interface>>
         +AddObserver(observer)
@@ -382,7 +375,7 @@ classDiagram
         <<interface>>
         +AddConditionObserver(observer)
         +RemoveConditionObserver(observer)
-        +NotifyConditionChanged(condition)
+        +NotifyConditionChanged()
     }
 
     class ConditionPartSubject {
@@ -406,9 +399,7 @@ classDiagram
     CounterStrategy ..|> PartStrategy
     TimeStrategy ..|> PartStrategy
     StrategyFactory ..> PartStrategy : creates
-    Phase ..|> StateSubject
     Phase ..|> ConditionObserver
-    Condition ..|> StateSubject
     Condition ..|> ConditionSubject
     Condition ..|> ConditionPartObserver
     ConditionPart ..|> StrategyObserver
@@ -424,9 +415,9 @@ classDiagram
 ```mermaid
 stateDiagram-v2
     [*] --> ready: 初期状態
-    ready --> active: start / OnStateChanged(StateActive)
-    active --> finish: finish / OnStateChanged(StateFinish)
-    finish --> ready: reset / OnStateChanged(StateReady)
+    ready --> active: start / OnPhaseChanged(StateActive)
+    active --> finish: finish / OnPhaseChanged(StateFinish)
+    finish --> ready: reset / OnPhaseChanged(StateReady)
     finish --> [*]
 ```
 
@@ -435,9 +426,9 @@ stateDiagram-v2
 ```mermaid
 stateDiagram-v2
     [*] --> ready: 初期状態
-    ready --> active: activate / OnStateChanged(StateActive)
-    active --> next: next / OnStateChanged(StateNext)
-    next --> finish: finish / OnStateChanged(StateFinish)
+    ready --> active: activate / OnPhaseChanged(StateActive)
+    active --> next: next / OnPhaseChanged(StateNext)
+    next --> finish: finish / OnPhaseChanged(StateFinish)
     finish --> [*]
 ```
 
@@ -446,9 +437,9 @@ stateDiagram-v2
 ```mermaid
 stateDiagram-v2
     [*] --> ready: 初期状態
-    ready --> active: activate / OnStateChanged(StateActive)
-    active --> next: next / OnStateChanged(StateNext)
-    next --> finish: finish / OnStateChanged(StateFinish)
+    ready --> active: activate / OnPhaseChanged(StateActive)
+    active --> next: next / OnPhaseChanged(StateNext)
+    next --> finish: finish / OnPhaseChanged(StateFinish)
     finish --> [*]
 ```
 
