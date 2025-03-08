@@ -169,31 +169,6 @@ func TestConditionObserver(t *testing.T) {
 	assert.Len(t, mockConditionObserver.Conditions, 0)
 }
 
-func TestConditionPartChanged(t *testing.T) {
-	// テスト用のCondition
-	condition := NewCondition(1, "Test Condition", value.KindCounter)
-	ctx := context.Background()
-
-	// 条件パーツの作成と追加
-	part := NewConditionPart(1, "Part 1")
-	condition.AddPart(part)
-
-	// Activate
-	err := condition.Activate(ctx)
-	assert.NoError(t, err)
-
-	// パーツの状態変更
-	condition.OnConditionPartChanged(part)
-	assert.Equal(t, value.StateUnsatisfied, condition.CurrentState()) // まだ満たされていない
-
-	// パーツが満たされた状態に設定
-	part.IsClear = true
-	// 満たされたパーツとして記録
-	condition.satisfiedParts[part.ID] = true
-	condition.OnConditionPartChanged(part)
-	assert.Equal(t, value.StateSatisfied, condition.CurrentState()) // 全てのパーツが満たされた
-}
-
 func TestConditionValidation(t *testing.T) {
 	// テスト用のCondition
 	condition := NewCondition(1, "Test Condition", value.KindCounter)

@@ -358,6 +358,7 @@ func (p Phases) ProcessAndActivateByNextOrder(ctx context.Context) (*Phase, erro
 		}
 
 		log.Debug("No next phase found", zap.Int("current_order", current.Order))
+		return nil, nil
 	} else {
 		log.Debug("Current phase is not in 'next' state, cannot proceed to next phase",
 			zap.String("current_state", current.CurrentState()))
