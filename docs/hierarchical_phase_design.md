@@ -721,4 +721,87 @@ sequenceDiagram
     PC->>PC: 自動進捗が無効なので親フェーズは進捗しない
 ```
 
-この設計により、Compositeパターンの特性を活かした再帰的なフェーズアクティブ化と、階層ごとの現在のフェーズ管理が可能になります。また、ProcessAndActivateByNextOrderメソッドは現在のphase.goの実装を維持し、再帰的なアクティブ化は別のメソッドとして実装することで、責務を明確に分離しています。
+## シーケンス図: 親フェーズ進捗時の子フェーズ切り替え
+
+```mermaid
+sequenceDiagram
+    participant OldParent as OldParentPhase(Order=1)
+    participant OldChild as OldChildPhase
+    participant NextParent as NextParentPhase(Order=2)
+    participant NextChild as NextChildPhase
+    participant PC as PhaseController
+    
+    OldParent->>OldParent: Next()
+    OldParent->>PC: OnPhaseChanged
+    PC->>PC: Start()
+    PC->>PC: GetCurrentLeafPhase() == OldChild
+    PC->>Phases: ProcessAndActivateByNextOrder()
+    Phases->>Phases: 次の兄弟フェーズがないことを確認
+    PC->>PC: 親フェーズのAutoProgressOnChildrenCompleteをチェック
+    PC->>OldParent: Next()
+    OldParent->>PC: OnPhaseChanged
+    PC->>PC: Start()
+    PC->>PC: 親フェーズのOrder変更を検出
+    PC->>PC: 次の親フェーズを探す
+    PC->>NextParent: 次の親フェーズを取得
+    PC->>NextParent: ActivatePhaseRecursively()
+    PC->>NextParent: Activate()
+    PC->>PC: SetCurrentPhase(NextParent)
+    PC->>NextParent: HasChildren() == true
+    PC->>NextParent: GetChildren()
+    PC->>NextChild: ActivatePhaseRecursively()
+    PC->>NextChild: Activate()
+    PC->>PC: SetCurrentPhase(NextChild)
+```
+
+## シーケンス図: 親フェーズ進捗時の子フェーズ切り替え（詳細）
+
+```mermaid
+sequenceDiagram
+    participant OldParent as OldParentPhase(ID=1, Order=1)
+    participant OldChild1 as OldChildPhase1(ParentID=1)
+    participant OldChild2 as OldChildPhase2(ParentID=1)
+    participant NextParent as NextParentPhase(ID=2, Order=2)
+    participant NextChild1 as NextChildPhase1(ParentID=2)
+    participant NextChild2 as NextChildPhase2(ParentID=2)
+    participant PC as PhaseController
+    
+    Note over OldParent,NextChild2: 初期状態: OldParentPhase(ID=1)の子フェーズOldChildPhase2がアクティブ
+    
+    OldChild2->>OldChild2: 条件が満たされる
+    OldChild2->>OldChild2: Next()
+    OldChild2->>PC: OnPhaseChanged
+    PC->>PC: Start()
+    PC->>PC: GetCurrentLeafPhase() == OldChild2
+    PC->>PC: 次の兄弟フェーズがないことを確認
+    PC->>OldParent: AutoProgressOnChildrenComplete == true
+    PC->>OldParent: Next()
+    OldParent->>PC: OnPhaseChanged
+    PC->>PC: Start()
+    
+    Note over PC: 親フェーズの進捗を検出
+    
+    PC->>PC: 親フェーズのOrder変更を検出
+    PC->>PC: phaseMap[0]から次の親フェーズを探す
+    PC->>NextParent: 次の親フェーズ(ID=2, Order=2)を取得
+    
+    Note over PC: 新しい親フェーズに紐づく子フェーズに切り替え
+    
+    PC->>NextParent: ActivatePhaseRecursively()
+    PC->>NextParent: Activate()
+    PC->>PC: SetCurrentPhase(NextParent)
+    PC->>PC: currentPhaseMap[0] = NextParent
+    
+    PC->>NextParent: HasChildren() == true
+    PC->>NextParent: GetChildren()
+    PC->>NextChild1: ActivatePhaseRecursively()
+    PC->>NextChild1: Activate()
+    PC->>PC: SetCurrentPhase(NextChild1)
+    PC->>PC: currentPhaseMap[2] = NextChild1
+    
+    Note over PC: 現在のアクティブなフェーズがOldChildPhase2からNextChildPhase1に切り替わる
+    
+    Note over OldParent,NextChild2: 最終状態: NextParentPhase(ID=2)の子フェーズNextChildPhase1がアクティブ
+```
+
+この設計により、Compositeパターンの特性を活かした再帰的なフェーズアクティブ化と、階層ごとの現在のフェーズ管理が可能になります。また、親フェーズが進捗した場合に、新しい親フェーズに紐づく子フェーズに切り替わる機能も実装されています。
