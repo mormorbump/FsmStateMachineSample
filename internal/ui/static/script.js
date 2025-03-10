@@ -5,6 +5,23 @@ class StateManager {
         this.setupEventListeners();
         this.currentState = 'ready';
         this.setupAutoTransitionControls();
+        this.fetchInitialState(); // 初期状態を取得
+    }
+
+    // 初期状態を取得するメソッド
+    async fetchInitialState() {
+        try {
+            const response = await fetch('/api/initial-state');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            console.log('初期状態データ取得:', data);
+            this.handleStateUpdate(data);
+        } catch (error) {
+            console.error('初期状態取得エラー:', error);
+            this.showStatus(`初期状態取得エラー: ${error.message}`, 'error');
+        }
     }
 
     connect() {
@@ -142,18 +159,179 @@ class StateManager {
 
         console.log('新しい状態:', {
             state: data.state,
-            phase: data.phase,
+            phases: data.phases,
+            currentPhase: data.current_phase,
             nextTransition: data.next_transition,
             conditions: data.conditions
         });
 
+        // フェーズの階層構造を構築
+        const phaseHierarchy = this.buildPhaseHierarchy(data.phases);
+        console.log('構築された階層構造:', phaseHierarchy);
+
         this.updateState(data);
+        this.updatePhaseHierarchy(data, phaseHierarchy); // 階層構造の更新
+        this.updateAllPhases(data.phases); // すべてのフェーズを更新
         this.updateTransitionInfo(data);
         if (data.message) {
             console.log('状態メッセージ:', data.message);
             this.updateStateMessage(data.message);
         }
         this.updateConditions(data.conditions);
+    }
+
+    // すべてのフェーズを更新するメソッド
+    updateAllPhases(phases) {
+        console.log('すべてのフェーズを更新:', phases);
+        const allPhasesList = document.getElementById('all-phases-list');
+        allPhasesList.innerHTML = '';
+        
+        if (!phases || phases.length === 0) {
+            return;
+        }
+        
+        // フェーズをIDでソート
+        const sortedPhases = [...phases].sort((a, b) => a.id - b.id);
+        
+        sortedPhases.forEach(phase => {
+            const phaseElement = document.createElement('div');
+            phaseElement.className = 'phase-item';
+            
+            const phaseInfo = document.createElement('div');
+            phaseInfo.className = 'phase-item-info';
+            
+            const phaseName = document.createElement('div');
+            phaseName.className = 'phase-item-name';
+            phaseName.textContent = `${phase.name} (ID: ${phase.id})`;
+            
+            const phaseDetails = document.createElement('div');
+            phaseDetails.className = 'phase-item-details';
+            phaseDetails.textContent = `親ID: ${phase.parent_id}, 順序: ${phase.order}, 子あり: ${phase.has_children}`;
+            
+            const phaseState = document.createElement('div');
+            phaseState.className = `phase-item-state state-${phase.state}`;
+            phaseState.textContent = phase.state;
+            
+            phaseInfo.appendChild(phaseName);
+            phaseInfo.appendChild(phaseDetails);
+            phaseElement.appendChild(phaseInfo);
+            phaseElement.appendChild(phaseState);
+            
+            allPhasesList.appendChild(phaseElement);
+        });
+    }
+
+    // フェーズの階層構造を構築する
+    buildPhaseHierarchy(phases) {
+        const phaseMap = {};
+        const rootPhases = [];
+        
+        // まず全てのフェーズをマップに格納
+        phases.forEach(phase => {
+            phaseMap[phase.id] = { ...phase, children: [] };
+        });
+        
+        // 親子関係を構築
+        phases.forEach(phase => {
+            if (phase.parent_id === 0) {
+                // ルートフェーズ
+                rootPhases.push(phaseMap[phase.id]);
+            } else {
+                // 子フェーズ
+                const parent = phaseMap[phase.parent_id];
+                if (parent) {
+                    parent.children.push(phaseMap[phase.id]);
+                }
+            }
+        });
+        
+        return rootPhases;
+    }
+
+    // 階層構造の更新メソッド
+    updatePhaseHierarchy(data, phaseHierarchy) {
+        // 現在のフェーズを取得
+        const currentPhase = data.current_phase;
+        if (!currentPhase) return;
+
+        console.log('階層構造更新:', {
+            currentPhase: currentPhase,
+            phaseHierarchy: phaseHierarchy
+        });
+
+        // 親フェーズを探す
+        let parentPhase = null;
+        if (currentPhase.parent_id !== 0) {
+            // 親フェーズを探す
+            for (const phase of data.phases) {
+                if (phase.id === currentPhase.parent_id) {
+                    parentPhase = phase;
+                    break;
+                }
+            }
+        }
+
+        // 子フェーズを探す
+        const childPhases = data.phases.filter(phase => phase.parent_id === currentPhase.id);
+
+        // 親フェーズの更新
+        const parentPhaseNameElement = document.getElementById('parent-phase-name');
+        const parentPhaseStateElement = document.getElementById('parent-phase-state');
+        const parentPhaseElement = document.getElementById('parent-phase');
+
+        if (parentPhase) {
+            parentPhaseNameElement.textContent = parentPhase.name;
+            parentPhaseStateElement.textContent = parentPhase.state;
+            parentPhaseElement.classList.remove('hidden');
+            
+            // 親フェーズの状態に応じたクラスを設定
+            parentPhaseStateElement.className = '';
+            parentPhaseStateElement.classList.add(`state-${parentPhase.state}`);
+        } else {
+            parentPhaseNameElement.textContent = '-';
+            parentPhaseStateElement.textContent = '-';
+            parentPhaseElement.classList.add('hidden');
+        }
+
+        // 現在のフェーズの更新
+        const currentPhaseNameElement = document.getElementById('current-phase-name');
+        const currentPhaseStateElement = document.getElementById('current-phase-state');
+        
+        currentPhaseNameElement.textContent = currentPhase.name;
+        currentPhaseStateElement.textContent = currentPhase.state;
+        
+        // 現在のフェーズの状態に応じたクラスを設定
+        currentPhaseStateElement.className = '';
+        currentPhaseStateElement.classList.add(`state-${currentPhase.state}`);
+
+        // 子フェーズの更新
+        const childPhasesListElement = document.getElementById('child-phases-list');
+        const childPhasesElement = document.getElementById('child-phases');
+        
+        childPhasesListElement.innerHTML = '';
+        
+        if (childPhases && childPhases.length > 0) {
+            childPhasesElement.classList.remove('hidden');
+            
+            childPhases.forEach(childPhase => {
+                const childPhaseElement = document.createElement('div');
+                childPhaseElement.className = 'child-phase-item';
+                
+                const isActive = childPhase.is_active ? 'active' : 'inactive';
+                
+                childPhaseElement.innerHTML = `
+                    <div class="child-phase-name">${childPhase.name}</div>
+                    <div class="child-phase-order">順序: ${childPhase.order}</div>
+                    <div class="child-phase-state state-${childPhase.state} ${isActive}">
+                        状態: ${childPhase.state}
+                    </div>
+                `;
+                
+                childPhasesListElement.appendChild(childPhaseElement);
+            });
+        } else {
+            childPhasesElement.classList.add('hidden');
+        }
     }
 
     updateConditions(conditions) {
@@ -175,6 +353,9 @@ class StateManager {
             const state = document.createElement('div');
             state.className = `condition-state state-${condition.state}`;
             state.textContent = condition.state;
+            const phaseInfo = document.createElement('div');
+            phaseInfo.className = 'condition-phase-info';
+            phaseInfo.textContent = `Phase: ${condition.phase_name} (ID: ${condition.phase_id})`;
             
             const description = document.createElement('div');
             description.className = 'condition-description';
@@ -183,6 +364,8 @@ class StateManager {
             header.appendChild(label);
             header.appendChild(state);
             conditionElement.appendChild(header);
+            conditionElement.appendChild(phaseInfo);
+            conditionElement.appendChild(description);
             conditionElement.appendChild(description);
 
             if (condition.parts && condition.parts.length > 0) {
@@ -303,20 +486,22 @@ class StateManager {
         console.log('状態更新処理:', {
             currentState: this.currentState,
             newState: data.state,
-            phase: data.phase
+            currentPhase: data.current_phase
         });
 
         const currentStateElement = document.getElementById('current-state');
         currentStateElement.textContent = data.state;
-        currentStateElement.className = `state-display ${data.phase?.is_clear ? 'is-clear' : 'not-clear'}`;
+        currentStateElement.className = `state-display ${data.current_phase?.is_clear ? 'is-clear' : 'not-clear'}`;
         this.currentState = data.state;
 
-        if (data.phase) {
-            document.getElementById('phase-name').textContent = data.phase.name || '-';
-            document.getElementById('phase-description').textContent = data.phase.description || '-';
-            document.getElementById('phase-order').textContent = data.phase.order || '-';
-            document.getElementById('phase-start-time').textContent = this.formatTime(data.phase.start_time);
-            document.getElementById('phase-finish-time').textContent = this.formatTime(data.phase.finish_time);
+        if (data.current_phase) {
+            document.getElementById('phase-name').textContent = data.current_phase.name || '-';
+            document.getElementById('phase-description').textContent = data.current_phase.description || '-';
+            document.getElementById('phase-order').textContent = data.current_phase.order || '-';
+            // 親IDを表示
+            document.getElementById('phase-parent-id').textContent = data.current_phase.parent_id || '-';
+            document.getElementById('phase-start-time').textContent = this.formatTime(data.current_phase.start_time);
+            document.getElementById('phase-finish-time').textContent = this.formatTime(data.current_phase.finish_time);
         }
 
         this.updateStateDiagram(data.state);

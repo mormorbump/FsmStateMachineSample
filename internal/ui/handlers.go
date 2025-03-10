@@ -28,11 +28,8 @@ func (s *StateServer) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	s.clients[conn] = true
 	s.mu.Unlock()
 
-	// 初期状態を送信
-	currentPhase := s.stateFacade.GetCurrentPhase()
-	if currentPhase != nil {
-		s.OnEntityChanged(currentPhase.CurrentState())
-	}
+	// WebSocket接続時には初期状態を送信しない
+	// 初期状態はクライアント側で/api/initial-stateエンドポイントから取得する
 
 	go func() { _ = s.recvWsMessage(conn) }()
 }
@@ -107,7 +104,13 @@ func (s *StateServer) handleConditionPartEvaluate(w http.ResponseWriter, r *http
 	log := logger.DefaultLogger()
 	vars := mux.Vars(r)
 
-	if s.stateFacade.GetCurrentPhase().CurrentState() == value.StateReady {
+	currentPhase := s.stateFacade.GetCurrentLeafPhase()
+	if currentPhase == nil {
+		http.Error(w, "no active phase", http.StatusBadRequest)
+		return
+	}
+
+	if currentPhase.CurrentState() == value.StateReady {
 		http.Error(w, "state is ready", http.StatusBadRequest)
 		return
 	}
@@ -174,6 +177,63 @@ func (s *StateServer) handleConditionPartEvaluate(w http.ResponseWriter, r *http
 	}
 }
 
+// handleInitialState 初期状態を取得するAPIエンドポイント
+func (s *StateServer) handleInitialState(w http.ResponseWriter, r *http.Request) {
+	log := logger.DefaultLogger()
+
+	// すべてのフェーズを取得
+	allPhases := s.stateFacade.GetController().GetPhases()
+	phaseDTOs := GetAllPhasesDTO(allPhases)
+
+	// すべてのフェーズの条件を取得
+	var allConditions []ConditionInfo
+	for _, phase := range allPhases {
+		conditions := s.getConditionInfos(phase)
+		allConditions = append(allConditions, conditions...)
+	}
+
+	// レスポンスを構築
+	response := struct {
+		Type         string          `json:"type"`
+		Phases       []PhaseDTO      `json:"phases"`
+		CurrentPhase *PhaseDTO       `json:"current_phase,omitempty"`
+		State        string          `json:"state"`
+		Info         *GameStateInfo  `json:"info,omitempty"`
+		Message      string          `json:"message,omitempty"`
+		Conditions   []ConditionInfo `json:"conditions"`
+	}{
+		Type:       "state_change",
+		Phases:     phaseDTOs,
+		Conditions: allConditions,
+	}
+
+	// 現在のルートフェーズを取得（親ID=0のフェーズ）
+	currentRootPhase := s.stateFacade.GetCurrentPhase(0)
+	if currentRootPhase != nil {
+		// 現在のルートフェーズが存在する場合のみ、関連情報を設定
+		stateInfo := s.getGameStateInfo(currentRootPhase)
+		response.State = currentRootPhase.CurrentState()
+		response.Info = stateInfo
+		response.Message = fmt.Sprintf("order: %v, message: %v", currentRootPhase.Order, stateInfo.Message)
+
+		// 現在のルートフェーズをDTOに変換
+		currentDTO := ConvertPhaseToDTO(currentRootPhase)
+		response.CurrentPhase = &currentDTO
+	} else {
+		// 現在のルートフェーズが存在しない場合は、デフォルト値を設定
+		response.State = "ready"
+		response.Message = "初期状態です。フェーズを開始してください。"
+	}
+
+	// レスポンスを送信
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Error("Failed to encode response", zap.Error(err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+}
+
 func (s *StateServer) Start(addr string) error {
 	log := logger.DefaultLogger()
 	r := mux.NewRouter()
@@ -181,6 +241,7 @@ func (s *StateServer) Start(addr string) error {
 	r.HandleFunc("/ws", s.handleWebSocket)
 	r.HandleFunc("/api/auto-transition", s.handleAutoTransition).Methods("POST")
 	r.HandleFunc("/api/condition/{condition_id}/part/{part_id}/evaluate", s.handleConditionPartEvaluate).Methods("POST")
+	r.HandleFunc("/api/initial-state", s.handleInitialState).Methods("GET")
 	r.PathPrefix("/").Handler(http.FileServer(http.Dir("internal/ui/static")))
 
 	log.Debug("Starting server on", zap.String("addr", addr))
