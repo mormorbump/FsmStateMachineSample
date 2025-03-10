@@ -3,6 +3,7 @@ package entity
 import (
 	"context"
 	"fmt"
+	"sort"
 	"state_sample/internal/domain/service"
 	"state_sample/internal/domain/value"
 	logger "state_sample/internal/lib"
@@ -32,13 +33,20 @@ type Phase struct {
 	observers           []service.PhaseObserver
 	mu                  sync.RWMutex
 	log                 *zap.Logger
+
+	// 新しいフィールド - 階層構造のための追加
+	ParentID                       value.PhaseID // 親フェーズのID（ルートフェーズの場合は0）
+	Parent                         *Phase        // 親フェーズへの参照
+	Children                       []*Phase      // 子フェーズのスライス
+	AutoProgressOnChildrenComplete bool          // 子フェーズ完了時に自動的に進捗するかどうか
 }
 
 // NewPhase は新しいPhaseインスタンスを作成します
-func NewPhase(name string, order int, conditions []*Condition, conditionType value.ConditionType, rule value.GameRule) *Phase {
+func NewPhase(id value.PhaseID, name string, order int, conditions []*Condition, conditionType value.ConditionType, rule value.GameRule, parentID value.PhaseID, autoProgressOnChildrenComplete bool) *Phase {
 	log := logger.DefaultLogger()
 
 	p := &Phase{
+		ID:                  id,
 		Name:                name,
 		isActive:            false,
 		Order:               order,
@@ -52,6 +60,12 @@ func NewPhase(name string, order int, conditions []*Condition, conditionType val
 		StartTime:           nil,
 		FinishTime:          nil,
 		log:                 log,
+
+		// 階層構造のフィールドを初期化
+		ParentID:                       parentID,
+		Parent:                         nil, // 後で設定
+		Children:                       make([]*Phase, 0),
+		AutoProgressOnChildrenComplete: autoProgressOnChildrenComplete,
 	}
 
 	for _, cond := range conditions {
@@ -303,6 +317,31 @@ func (p Phases) Current() *Phase {
 	return nil
 }
 
+// SortByOrder はフェーズをOrderでソートします
+func (p Phases) SortByOrder() Phases {
+	sorted := make(Phases, len(p))
+	copy(sorted, p)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Order < sorted[j].Order
+	})
+	return sorted
+}
+
+// GetByOrder は指定されたOrderを持つフェーズを返します
+func (p Phases) GetByOrder(order int) *Phase {
+	for _, phase := range p {
+		if phase.Order == order {
+			return phase
+		}
+	}
+	return nil
+}
+
+// GetNextByOrder は現在のOrderの次のOrderを持つフェーズを返します
+func (p Phases) GetNextByOrder(currentOrder int) *Phase {
+	return p.GetByOrder(currentOrder + 1)
+}
+
 // ResetAll は全てのフェーズをリセットします
 func (p Phases) ResetAll(ctx context.Context) error {
 	for _, phase := range p {
@@ -311,6 +350,81 @@ func (p Phases) ResetAll(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// AddChild 子フェーズを追加します
+func (p *Phase) AddChild(child *Phase) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	child.Parent = p
+	p.Children = append(p.Children, child)
+}
+
+// GetChildren 子フェーズのスライスを返します（Orderでソート済み）
+func (p *Phase) GetChildren() Phases {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	children := make(Phases, len(p.Children))
+	copy(children, p.Children)
+	return children.SortByOrder()
+}
+
+// HasChildren 子フェーズを持つかどうかを返します
+func (p *Phase) HasChildren() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	return len(p.Children) > 0
+}
+
+// IsActive フェーズがアクティブかどうかを返します
+func (p *Phase) IsActive() bool {
+	return p.isActive
+}
+
+// PhaseMap はParentIDごとにグループ化されたPhasesのマップです
+type PhaseMap map[value.PhaseID]Phases
+
+// CurrentPhaseMap は階層ごとの現在アクティブなフェーズを管理するマップです
+type CurrentPhaseMap map[value.PhaseID]*Phase
+
+// GroupPhasesByParentID はフェーズをParentIDごとにグループ化します
+func GroupPhasesByParentID(phases Phases) PhaseMap {
+	phaseMap := make(PhaseMap)
+	for _, phase := range phases {
+		if _, ok := phaseMap[phase.ParentID]; !ok {
+			phaseMap[phase.ParentID] = make(Phases, 0)
+		}
+		phaseMap[phase.ParentID] = append(phaseMap[phase.ParentID], phase)
+	}
+
+	// 各グループをOrderでソート
+	for parentID, phases := range phaseMap {
+		phaseMap[parentID] = phases.SortByOrder()
+	}
+
+	return phaseMap
+}
+
+// InitializePhaseHierarchy はフェーズの親子関係を初期化します
+func InitializePhaseHierarchy(phases Phases) {
+	// IDごとにフェーズをマップ化
+	phaseByID := make(map[value.PhaseID]*Phase)
+	for _, phase := range phases {
+		phaseByID[phase.ID] = phase
+	}
+
+	// 親子関係を設定
+	for _, phase := range phases {
+		if phase.ParentID != 0 {
+			if parent, ok := phaseByID[phase.ParentID]; ok {
+				parent.AddChild(phase)
+				phase.Parent = parent
+			}
+		}
+	}
 }
 
 // ProcessAndActivateByNextOrder は次のフェーズに移行します
@@ -325,11 +439,16 @@ func (p Phases) ProcessAndActivateByNextOrder(ctx context.Context) (*Phase, erro
 			return nil, fmt.Errorf("no phases available")
 		}
 
+		// Orderでソート
+		sortedPhases := p.SortByOrder()
+		firstPhase := sortedPhases[0]
+
 		log.Debug("Phases.ProcessAndActivateByNextOrder",
 			zap.String("action", "Starting first phase"),
-			zap.String("name", p[0].Name),
+			zap.String("name", firstPhase.Name),
 		)
-		return p[0], p[0].Activate(ctx)
+
+		return firstPhase, firstPhase.Activate(ctx)
 	}
 
 	log.Debug("ProcessAndActivateByNextOrder: Current phase",
@@ -348,13 +467,14 @@ func (p Phases) ProcessAndActivateByNextOrder(ctx context.Context) (*Phase, erro
 		}
 
 		// 次のフェーズを探す
-		for _, phase := range p {
-			if current.Order+1 == phase.Order {
-				log.Debug("Phases.ProcessAndActivateByNextOrder",
-					zap.String("name", phase.Name),
-					zap.String("action", "Activating next phase"))
-				return phase, phase.Activate(ctx)
-			}
+		nextPhase := p.GetNextByOrder(current.Order)
+
+		if nextPhase != nil {
+			log.Debug("Phases.ProcessAndActivateByNextOrder",
+				zap.String("name", nextPhase.Name),
+				zap.String("action", "Activating next phase"))
+
+			return nextPhase, nextPhase.Activate(ctx)
 		}
 
 		log.Debug("No next phase found", zap.Int("current_order", current.Order))
@@ -363,6 +483,5 @@ func (p Phases) ProcessAndActivateByNextOrder(ctx context.Context) (*Phase, erro
 		log.Debug("Current phase is not in 'next' state, cannot proceed to next phase",
 			zap.String("current_state", current.CurrentState()))
 	}
-
 	return current, nil
 }

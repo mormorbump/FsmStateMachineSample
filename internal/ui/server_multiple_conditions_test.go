@@ -36,20 +36,16 @@ func TestServerWithMultipleConditions(t *testing.T) {
 		t.Fatalf("Failed to initialize strategies for cond1_2: %v", err)
 	}
 
-	phase1 := entity.NewPhase("PHASE1", 1, []*entity.Condition{cond1_1, cond1_2}, value.ConditionTypeAnd, value.GameRule_Animation)
+	phase1 := entity.NewPhase(1, "PHASE1", 1, []*entity.Condition{cond1_1, cond1_2}, value.ConditionTypeAnd, value.GameRule_Animation, 0, false)
 	part1_1.AddConditionPartObserver(cond1_1)
 	part1_2.AddConditionPartObserver(cond1_2)
 	cond1_1.AddConditionObserver(phase1)
 	cond1_2.AddConditionObserver(phase1)
 
-	// StateFacadeとStateServerを作成
-	phases := entity.Phases{phase1}
-	controller := state.NewPhaseController(phases)
-	facade := &mockStateFacade{
-		controller:   controller,
-		currentPhase: phase1,
+	// テスト用のモックサーバーを直接作成
+	server := &StateServer{
+		stateFacade: nil, // テストでは使用しない
 	}
-	server := NewStateServer(facade)
 
 	// EditResponseメソッドを呼び出して、レスポンスを取得
 	stateInfo := server.getGameStateInfo(phase1)
@@ -101,7 +97,14 @@ func (m *mockStateFacade) Reset(ctx context.Context) error {
 	return nil
 }
 
-func (m *mockStateFacade) GetCurrentPhase() *entity.Phase {
+func (m *mockStateFacade) GetCurrentPhase(parentID value.PhaseID) *entity.Phase {
+	if parentID == 0 {
+		return m.currentPhase // テスト用にルートフェーズとして扱う
+	}
+	return nil
+}
+
+func (m *mockStateFacade) GetCurrentLeafPhase() *entity.Phase {
 	return m.currentPhase
 }
 

@@ -37,7 +37,7 @@ func TestNewPhase(t *testing.T) {
 	rule := value.GameRule_Shooting
 
 	// Phaseの作成
-	phase := NewPhase(name, order, conditions, conditionType, rule)
+	phase := NewPhase(1, name, order, conditions, conditionType, rule, 0, false)
 
 	// 初期状態の検証
 	assert.Equal(t, name, phase.Name)
@@ -57,7 +57,7 @@ func TestNewPhase(t *testing.T) {
 
 func TestPhaseStateTransitions(t *testing.T) {
 	// テスト用のPhase
-	phase := NewPhase("Test Phase", 1, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting)
+	phase := NewPhase(1, "Test Phase", 1, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting, 0, false)
 	ctx := context.Background()
 
 	// Activate: Ready -> Active
@@ -92,7 +92,7 @@ func TestPhaseStateTransitions(t *testing.T) {
 
 func TestPhaseObserver(t *testing.T) {
 	// テスト用のPhase
-	phase := NewPhase("Test Phase", 1, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting)
+	phase := NewPhase(1, "Test Phase", 1, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting, 0, false)
 
 	// モックオブザーバーの作成
 	mockObserver := &MockPhaseStateObserver{}
@@ -174,7 +174,7 @@ func TestPhaseConditionTypes(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// テスト用のPhase
-			phase := NewPhase("Test Phase", 1, []*Condition{condition1, condition2}, tc.conditionType, value.GameRule_Shooting)
+			phase := NewPhase(1, "Test Phase", 1, []*Condition{condition1, condition2}, tc.conditionType, value.GameRule_Shooting, 0, false)
 			ctx := context.Background()
 
 			// Activate
@@ -198,7 +198,7 @@ func TestPhaseConditionTypes(t *testing.T) {
 
 func TestPhaseGetStateInfo(t *testing.T) {
 	// テスト用のPhase
-	phase := NewPhase("Test Phase", 1, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting)
+	phase := NewPhase(1, "Test Phase", 1, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting, 0, false)
 	ctx := context.Background()
 
 	// Ready状態
@@ -234,9 +234,9 @@ func TestPhaseGetStateInfo(t *testing.T) {
 
 func TestPhasesCollection(t *testing.T) {
 	// テスト用のPhase
-	phase1 := NewPhase("Phase 1", 1, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting)
-	phase2 := NewPhase("Phase 2", 2, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting)
-	phase3 := NewPhase("Phase 3", 3, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting)
+	phase1 := NewPhase(1, "Phase 1", 1, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting, 0, false)
+	phase2 := NewPhase(2, "Phase 2", 2, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting, 0, false)
+	phase3 := NewPhase(3, "Phase 3", 3, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting, 0, false)
 
 	// Phasesコレクションの作成
 	phases := Phases{phase1, phase2, phase3}
@@ -307,7 +307,7 @@ func TestPhaseReset(t *testing.T) {
 	condition.AddPart(part)
 
 	// テスト用のPhase
-	phase := NewPhase("Test Phase", 1, []*Condition{condition}, value.ConditionTypeOr, value.GameRule_Shooting)
+	phase := NewPhase(1, "Test Phase", 1, []*Condition{condition}, value.ConditionTypeOr, value.GameRule_Shooting, 0, false)
 	ctx := context.Background()
 
 	// Activate
@@ -335,4 +335,95 @@ func TestPhaseReset(t *testing.T) {
 	assert.Nil(t, phase.FinishTime)
 	assert.Empty(t, phase.SatisfiedConditions)
 	assert.Equal(t, value.StateReady, condition.CurrentState())
+}
+
+func TestPhaseHierarchy(t *testing.T) {
+	// 親フェーズの作成
+	parentPhase := NewPhase(1, "Parent Phase", 1, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting, 0, true)
+
+	// 子フェーズの作成
+	childPhase1 := NewPhase(2, "Child Phase 1", 1, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting, 1, false)
+	childPhase2 := NewPhase(3, "Child Phase 2", 2, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting, 1, false)
+
+	// 親子関係の設定
+	parentPhase.AddChild(childPhase1)
+	parentPhase.AddChild(childPhase2)
+
+	// 親子関係の検証
+	assert.Equal(t, 2, len(parentPhase.Children))
+	assert.Equal(t, parentPhase, childPhase1.Parent)
+	assert.Equal(t, parentPhase, childPhase2.Parent)
+	assert.True(t, parentPhase.HasChildren())
+	assert.False(t, childPhase1.HasChildren())
+
+	// GetChildrenメソッドのテスト
+	children := parentPhase.GetChildren()
+	assert.Equal(t, 2, len(children))
+	assert.Equal(t, childPhase1, children[0]) // Orderでソートされているので、Order=1のchildPhase1が先に来る
+	assert.Equal(t, childPhase2, children[1])
+}
+
+func TestGroupPhasesByParentID(t *testing.T) {
+	// フェーズの作成
+	rootPhase1 := NewPhase(1, "Root Phase 1", 1, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting, 0, true)
+	rootPhase2 := NewPhase(2, "Root Phase 2", 2, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting, 0, true)
+
+	childPhase1 := NewPhase(3, "Child Phase 1", 1, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting, 1, false)
+	childPhase2 := NewPhase(4, "Child Phase 2", 2, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting, 1, false)
+
+	grandChildPhase := NewPhase(5, "Grand Child Phase", 1, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting, 3, false)
+
+	// フェーズのスライスを作成
+	phases := Phases{rootPhase1, rootPhase2, childPhase1, childPhase2, grandChildPhase}
+
+	// GroupPhasesByParentIDのテスト
+	phaseMap := GroupPhasesByParentID(phases)
+
+	// 結果の検証
+	assert.Equal(t, 3, len(phaseMap))    // 3つの親ID（0, 1, 3）があるはず
+	assert.Equal(t, 2, len(phaseMap[0])) // 親ID=0のフェーズは2つ
+	assert.Equal(t, 2, len(phaseMap[1])) // 親ID=1のフェーズは2つ
+	assert.Equal(t, 1, len(phaseMap[3])) // 親ID=3のフェーズは1つ
+
+	// 各グループがOrderでソートされていることを確認
+	assert.Equal(t, rootPhase1, phaseMap[0][0])
+	assert.Equal(t, rootPhase2, phaseMap[0][1])
+	assert.Equal(t, childPhase1, phaseMap[1][0])
+	assert.Equal(t, childPhase2, phaseMap[1][1])
+	assert.Equal(t, grandChildPhase, phaseMap[3][0])
+}
+
+func TestInitializePhaseHierarchy(t *testing.T) {
+	// フェーズの作成（親子関係はまだ設定しない）
+	rootPhase := NewPhase(1, "Root Phase", 1, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting, 0, true)
+
+	childPhase1 := NewPhase(2, "Child Phase 1", 1, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting, 1, false)
+	childPhase2 := NewPhase(3, "Child Phase 2", 2, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting, 1, false)
+
+	grandChildPhase := NewPhase(4, "Grand Child Phase", 1, []*Condition{}, value.ConditionTypeOr, value.GameRule_Shooting, 2, false)
+
+	// フェーズのスライスを作成
+	phases := Phases{rootPhase, childPhase1, childPhase2, grandChildPhase}
+
+	// 初期状態では親子関係が設定されていないことを確認
+	assert.Nil(t, childPhase1.Parent)
+	assert.Nil(t, childPhase2.Parent)
+	assert.Nil(t, grandChildPhase.Parent)
+	assert.Empty(t, rootPhase.Children)
+	assert.Empty(t, childPhase1.Children)
+
+	// InitializePhaseHierarchyのテスト
+	InitializePhaseHierarchy(phases)
+
+	// 親子関係が正しく設定されたことを確認
+	assert.Equal(t, rootPhase, childPhase1.Parent)
+	assert.Equal(t, rootPhase, childPhase2.Parent)
+	assert.Equal(t, childPhase1, grandChildPhase.Parent)
+
+	assert.Equal(t, 2, len(rootPhase.Children))
+	assert.Contains(t, rootPhase.Children, childPhase1)
+	assert.Contains(t, rootPhase.Children, childPhase2)
+
+	assert.Equal(t, 1, len(childPhase1.Children))
+	assert.Contains(t, childPhase1.Children, grandChildPhase)
 }

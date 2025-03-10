@@ -16,6 +16,35 @@
                 <div id="current-state" class="state-display">ready</div>
             </div>
 
+            <!-- 階層構造表示エリアを追加 -->
+            <div class="phase-hierarchy">
+                <h2>Phase階層構造</h2>
+                <div class="hierarchy-container">
+                    <div id="parent-phase" class="hierarchy-item parent-phase">
+                        <div class="phase-label">親Phase: <span id="parent-phase-name">-</span></div>
+                        <div class="phase-state">状態: <span id="parent-phase-state">-</span></div>
+                    </div>
+                    <div id="current-phase" class="hierarchy-item current-phase">
+                        <div class="phase-label">現在のPhase: <span id="current-phase-name">-</span></div>
+                        <div class="phase-state">状態: <span id="current-phase-state">-</span></div>
+                    </div>
+                    <div id="child-phases" class="hierarchy-item child-phases">
+                        <div class="phase-label">子Phase:</div>
+                        <div id="child-phases-list" class="child-phases-list">
+                            <!-- 子フェーズリストがここに動的に追加されます -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- すべてのPhase情報を表示するセクション -->
+            <div class="all-phases-container">
+                <h2>すべてのPhase</h2>
+                <div id="all-phases-list" class="all-phases-list">
+                    <!-- すべてのフェーズリストがここに動的に追加されます -->
+                </div>
+            </div>
+
             <div class="info-wrapper">
                 <div class="phase-details">
                     <h2>Phase詳細</h2>
@@ -31,6 +60,11 @@
                         <div class="phase-info-item">
                             <span class="phase-info-label">順序:</span>
                             <span id="phase-order" class="phase-info-value">-</span>
+                        </div>
+                        <!-- 親IDを表示する項目を追加 -->
+                        <div class="phase-info-item">
+                            <span class="phase-info-label">親ID:</span>
+                            <span id="phase-parent-id" class="phase-info-value">-</span>
                         </div>
                         <div class="phase-info-item">
                             <span class="phase-info-label">開始時間:</span>

@@ -15,11 +15,10 @@ import (
 
 // PhaseController はフェーズの制御を担当するコントローラーです
 type PhaseController struct {
-	phases       entity.Phases
-	currentPhase *entity.Phase
-	observers    []service.ControllerObserver
-	mu           sync.RWMutex
-	log          *zap.Logger
+	phaseFacade *entity.PhaseFacade
+	observers   []service.ControllerObserver
+	mu          sync.RWMutex
+	log         *zap.Logger
 }
 
 // NewPhaseController は新しいPhaseControllerを作成します
@@ -28,17 +27,27 @@ func NewPhaseController(phases entity.Phases) *PhaseController {
 	if len(phases) <= 0 {
 		log.Error("PhaseController", zap.String("error", "No phases found"))
 	}
+
+	// PhaseFacadeを作成
+	phaseFacade := entity.NewPhaseFacade(phases)
+
 	pc := &PhaseController{
-		phases:    phases,
-		observers: make([]service.ControllerObserver, 0),
-		log:       log,
+		phaseFacade: phaseFacade,
+		observers:   make([]service.ControllerObserver, 0),
+		log:         log,
 	}
 
-	log.Debug("PhaseController initialized", zap.Int("phases count", len(phases)), zap.String("instance", fmt.Sprintf("%p", pc)))
-	pc.SetCurrentPhase(phases[0])
+	log.Debug("PhaseController initialized",
+		zap.Int("phases count", len(phases)),
+		zap.String("instance", fmt.Sprintf("%p", pc)))
+
+	// オブザーバーを設定
 	for _, phase := range phases {
 		phase.AddObserver(pc)
-		log.Debug("Added observer to phase", zap.String("phase", phase.Name), zap.String("observer", fmt.Sprintf("%p", pc)))
+		log.Debug("Added observer to phase",
+			zap.String("phase", phase.Name),
+			zap.String("observer", fmt.Sprintf("%p", pc)))
+
 		for _, cond := range phase.GetConditions() {
 			cond.AddConditionObserver(pc)
 			for _, p := range cond.GetParts() {
@@ -46,6 +55,7 @@ func NewPhaseController(phases entity.Phases) *PhaseController {
 			}
 		}
 	}
+
 	return pc
 }
 
@@ -66,7 +76,60 @@ func (pc *PhaseController) OnPhaseChanged(phaseEntity interface{}) {
 	if phase.CurrentState() == value.StateNext {
 		time.Sleep(1 * time.Second)
 		pc.log.Debug("start next phase!!!!!!!!!!")
-		_ = pc.Start(context.Background())
+
+		ctx := context.Background()
+
+		// フェーズの親IDを取得
+		parentID := phase.ParentID
+
+		// 同じ親を持つフェーズのグループを取得
+		siblingPhases := pc.phaseFacade.GetPhasesByParentID(parentID)
+
+		// 現在のフェーズを終了
+		if err := phase.Finish(ctx); err != nil {
+			pc.log.Error("Failed to finish current phase", zap.Error(err))
+			// エラーが発生しても次のフェーズに進む試みをする
+		}
+
+		// 次のフェーズを探す
+		nextPhase := siblingPhases.GetNextByOrder(phase.Order)
+
+		if nextPhase != nil {
+			// 次のフェーズが見つかった場合、それをアクティブ化
+			pc.log.Debug("Found next phase",
+				zap.String("next_phase", nextPhase.Name),
+				zap.Int("next_order", nextPhase.Order))
+			_ = pc.ActivatePhaseRecursively(ctx, nextPhase)
+		} else if parentID != 0 {
+			// 次のフェーズがなく、親がルートでない場合、親の次のフェーズを探す
+			pc.log.Debug("No next phase found, checking parent's siblings")
+
+			// 親フェーズが子フェーズ完了時に自動的に進捗する設定の場合
+			if phase.Parent != nil && phase.Parent.AutoProgressOnChildrenComplete {
+				pc.log.Debug("Moving parent phase to next state (auto progress enabled)",
+					zap.String("parent_name", phase.Parent.Name))
+
+				if err := phase.Parent.Next(ctx); err != nil {
+					pc.log.Error("Failed to move parent to next state", zap.Error(err))
+				}
+			}
+		} else {
+			// 親IDが0（ルートフェーズ）で次のフェーズがない場合、次のルートフェーズを探す
+			pc.log.Debug("No next phase found for root phase, looking for next root phase")
+
+			rootPhases := pc.phaseFacade.GetPhasesByParentID(0)
+			nextRootPhase := rootPhases.GetNextByOrder(phase.Order)
+
+			if nextRootPhase != nil {
+				pc.log.Debug("Found next root phase",
+					zap.String("next_root", nextRootPhase.Name),
+					zap.Int("next_order", nextRootPhase.Order))
+				_ = pc.ActivatePhaseRecursively(ctx, nextRootPhase)
+			} else {
+				pc.log.Debug("No next root phase found, all phases completed")
+				pc.NotifyEntityChanged(nil)
+			}
+		}
 	}
 }
 
@@ -98,63 +161,59 @@ func (pc *PhaseController) OnConditionPartChanged(part interface{}) {
 	pc.NotifyEntityChanged(part)
 }
 
-// GetCurrentPhase は現在のフェーズを取得します
-func (pc *PhaseController) GetCurrentPhase() *entity.Phase {
-	pc.mu.RLock()
-	defer pc.mu.RUnlock()
-	return pc.currentPhase
-}
-
-// SetCurrentPhase は現在のフェーズを設定します
-func (pc *PhaseController) SetCurrentPhase(phase *entity.Phase) {
-	pc.mu.Lock()
-	defer pc.mu.Unlock()
-
-	oldPhaseName := ""
-	if pc.currentPhase != nil {
-		oldPhaseName = pc.currentPhase.Name
-	}
-
-	pc.currentPhase = phase
-	pc.log.Debug("PhaseController", zap.String("old phase", oldPhaseName), zap.String("new phase", phase.Name))
-}
-
 // GetPhases は全フェーズを取得します
-func (pc *PhaseController) GetPhases() []*entity.Phase {
-	pc.mu.RLock()
-	defer pc.mu.RUnlock()
-	return pc.phases
+func (pc *PhaseController) GetPhases() entity.Phases {
+	return pc.phaseFacade.GetAllPhases()
 }
 
-// Start はフェーズシーケンスを開始します
-func (pc *PhaseController) Start(ctx context.Context) error {
-	pc.log.Debug("PhaseController.Start", zap.String("action", "Starting phase sequence"))
-
-	// 現在のフェーズを取得
-	currentPhase := pc.GetCurrentPhase()
-	if currentPhase != nil {
-		pc.log.Debug("Current phase before ProcessAndActivateByNextOrder",
-			zap.String("name", currentPhase.Name),
-			zap.Int("order", currentPhase.Order),
-			zap.String("state", currentPhase.CurrentState()))
+// ActivatePhaseRecursively はフェーズを再帰的にアクティブ化します
+func (pc *PhaseController) ActivatePhaseRecursively(ctx context.Context, phase *entity.Phase) error {
+	if phase == nil {
+		return fmt.Errorf("phase is nil")
 	}
 
-	// 次のフェーズを取得して活性化
-	nextPhase, err := pc.phases.ProcessAndActivateByNextOrder(ctx)
+	pc.log.Debug("ActivatePhaseRecursively",
+		zap.String("phase", phase.Name),
+		zap.Int("order", phase.Order))
 
-	if nextPhase == nil {
-		pc.log.Debug("PhaseController.Start", zap.String("action", "No phases found. notify finish"))
-		pc.NotifyEntityChanged(nil)
-		//pc.SetCurrentPhase(pc.phases[0])
+	// フェーズをアクティブ化
+	if err := phase.Activate(ctx); err != nil {
 		return err
 	}
-	pc.SetCurrentPhase(nextPhase)
-	return err
+
+	// 現在のフェーズとして設定
+	pc.phaseFacade.SetCurrentPhase(phase)
+
+	// 子フェーズがある場合は最初の子フェーズをアクティブ化
+	if phase.HasChildren() {
+		children := phase.GetChildren()
+		if len(children) == 0 {
+			pc.log.Error("ActivatePhaseRecursively: HasChildren() is true but GetChildren() returned empty slice",
+				zap.String("phase", phase.Name))
+			return fmt.Errorf("inconsistent phase state: HasChildren() is true but GetChildren() returned empty slice")
+		}
+
+		firstChild := children[0]
+		if firstChild == nil {
+			pc.log.Error("ActivatePhaseRecursively: first child is nil",
+				zap.String("phase", phase.Name))
+			return fmt.Errorf("first child is nil")
+		}
+
+		pc.log.Debug("ActivatePhaseRecursively: Activating first child",
+			zap.String("child", firstChild.Name),
+			zap.Int("child_order", firstChild.Order))
+
+		return pc.ActivatePhaseRecursively(ctx, firstChild)
+	}
+
+	return nil
 }
 
 // Reset は全てのフェーズをリセットします
 func (pc *PhaseController) Reset(ctx context.Context) error {
-	if len(pc.phases) <= 0 {
+	allPhases := pc.GetPhases()
+	if len(allPhases) <= 0 {
 		err := fmt.Errorf("no phases found")
 		pc.log.Error("PhaseController.Reset", zap.Error(err))
 		return err
@@ -163,14 +222,22 @@ func (pc *PhaseController) Reset(ctx context.Context) error {
 	pc.log.Debug("PhaseController.Reset", zap.String("action", "Resetting all phases"))
 
 	// 全フェーズをリセット
-	for _, phase := range pc.phases {
+	for _, phase := range allPhases {
 		if err := phase.Reset(ctx); err != nil {
 			return err
 		}
 	}
 
-	pc.SetCurrentPhase(pc.phases[0])
-	pc.log.Debug("PhaseController.Reset", zap.String("phase name", pc.phases[0].Name))
+	// 現在のフェーズマップをクリア
+	pc.phaseFacade.ResetCurrentPhaseMap()
+
+	// 最初のルートフェーズを取得
+	rootPhases := pc.phaseFacade.GetPhasesByParentID(0)
+	if len(rootPhases) > 0 {
+		firstRootPhase := rootPhases[0]
+		pc.phaseFacade.SetCurrentPhase(firstRootPhase)
+		pc.log.Debug("PhaseController.Reset", zap.String("phase name", firstRootPhase.Name))
+	}
 
 	return nil
 }

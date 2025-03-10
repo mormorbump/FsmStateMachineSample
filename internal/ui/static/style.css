@@ -1,3 +1,94 @@
+/* 階層構造表示のスタイル */
+.phase-hierarchy {
+    margin: 20px 0;
+    padding: 15px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.hierarchy-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.hierarchy-item {
+    padding: 12px;
+    border-radius: 6px;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+}
+
+.hierarchy-item.hidden {
+    display: none;
+}
+
+.parent-phase {
+    border-left: 4px solid #6c757d;
+}
+
+.current-phase {
+    border-left: 4px solid #0d6efd;
+    background-color: #e9f0ff;
+}
+
+.child-phases {
+    border-left: 4px solid #20c997;
+}
+
+.phase-label {
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: #495057;
+}
+
+.phase-state {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    margin-top: 5px;
+}
+
+.child-phases-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 10px;
+    margin-left: 15px;
+}
+
+.child-phase-item {
+    padding: 10px;
+    background-color: white;
+    border-radius: 4px;
+    border: 1px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.child-phase-name {
+    font-weight: bold;
+    color: #495057;
+}
+
+.child-phase-order {
+    color: #6c757d;
+    font-size: 0.9em;
+}
+
+.child-phase-state {
+    padding: 3px 6px;
+    border-radius: 3px;
+    font-size: 0.8em;
+}
+
+.child-phase-state.active {
+    border: 2px solid #0d6efd;
+}
+
 /* 全体のスタイル */
 body {
     font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -399,6 +490,56 @@ h1 {
     }
 }
 
+/* すべてのPhase表示のスタイル */
+.all-phases-container {
+    margin: 20px 0;
+    padding: 15px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.all-phases-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.phase-item {
+    padding: 12px;
+    border-radius: 6px;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-left: 4px solid #9b59b6;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.phase-item-info {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.phase-item-name {
+    font-weight: bold;
+    color: #495057;
+}
+
+.phase-item-details {
+    font-size: 0.9em;
+    color: #6c757d;
+}
+
+.phase-item-state {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
 /* 条件表示のスタイル */
 .conditions-container {
     padding: 10px;
@@ -441,6 +582,17 @@ h1 {
     padding: 4px 8px;
     border-radius: 4px;
     font-size: 0.9em;
+}
+
+.condition-phase-info {
+    font-size: 0.9em;
+    color: #9b59b6;
+    margin-top: 5px;
+    font-weight: bold;
+    padding: 5px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    border-left: 3px solid #9b59b6;
 }
 
 .parts-list {
